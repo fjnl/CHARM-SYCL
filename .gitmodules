@@ -1,0 +1,72 @@
+[submodule "vendor/Catch2"]
+	path = vendor/Catch2
+	url = https://github.com/catchorg/Catch2
+[submodule "vendor/thread-pool"]
+	path = vendor/thread-pool
+	url = https://github.com/bshoshany/thread-pool
+[submodule "vendor/fmtlib"]
+	path = vendor/fmtlib
+	url = https://github.com/fmtlib/fmt
+[submodule "vendor/pugixml"]
+	path = vendor/pugixml
+	url = https://github.com/zeux/pugixml
+[submodule "vendor/cxxopts"]
+	path = vendor/cxxopts
+	url = https://github.com/jarro2783/cxxopts
+[submodule "vendor/chibi-scheme"]
+	path = vendor/chibi-scheme
+	url = https://github.com/ashinn/chibi-scheme
+[submodule "vendor/SipHash"]
+	path = vendor/SipHash
+	url = https://github.com/veorq/SipHash.git
+[submodule "vendor/msgpack-c"]
+	path = vendor/msgpack-c
+	url = https://github.com/msgpack/msgpack-c
+[submodule "vendor/boost"]
+	path = vendor/boost
+	url = https://github.com/boostorg/boost
+[submodule "vendor/cpp-peglib"]
+	path = vendor/cpp-peglib
+	url = https://github.com/yhirose/cpp-peglib.git
+[submodule "vendor/boost/assert"]
+	path = vendor/boost/assert
+	url = https://github.com/boostorg/assert
+[submodule "vendor/boost/config"]
+	path = vendor/boost/config
+	url = https://github.com/boostorg/config
+[submodule "vendor/boost/core"]
+	path = vendor/boost/core
+	url = https://github.com/boostorg/core
+[submodule "vendor/boost/integer"]
+	path = vendor/boost/integer
+	url = https://github.com/boostorg/integer
+[submodule "vendor/boost/move"]
+	path = vendor/boost/move
+	url = https://github.com/boostorg/move
+[submodule "vendor/boost/mp11"]
+	path = vendor/boost/mp11
+	url = https://github.com/boostorg/mp11
+[submodule "vendor/boost/pool"]
+	path = vendor/boost/pool
+	url = https://github.com/boostorg/pool
+[submodule "vendor/boost/predef"]
+	path = vendor/boost/predef
+	url = https://github.com/boostorg/predef
+[submodule "vendor/boost/smart_ptr"]
+	path = vendor/boost/smart_ptr
+	url = https://github.com/boostorg/smart_ptr
+[submodule "vendor/boost/static_assert"]
+	path = vendor/boost/static_assert
+	url = https://github.com/boostorg/static_assert
+[submodule "vendor/boost/throw_exception"]
+	path = vendor/boost/throw_exception
+	url = https://github.com/boostorg/throw_exception
+[submodule "vendor/boost/type_traits"]
+	path = vendor/boost/type_traits
+	url = https://github.com/boostorg/type_traits
+[submodule "vendor/boost/winapi"]
+	path = vendor/boost/winapi
+	url = https://github.com/boostorg/winapi
+[submodule "vendor/boost/context"]
+	path = vendor/boost/context
+	url = https://github.com/boostorg/context

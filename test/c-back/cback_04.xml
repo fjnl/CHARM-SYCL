@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<XcodeProgram source="&lt;stdin&gt;" language="C" time="2023-06-06 15:09:12"
+              compiler-info="XcodeML/C-FrontEnd" version="1.3.0">
+  <typeTable>
+    <pointerType type="P0" ref="S0"/>
+    <pointerType type="P1" ref="S1"/>
+    <pointerType type="P2" ref="F0"/>
+    <structType type="S0">
+      <symbols>
+        <id type="int">
+          <name>x</name>
+        </id>
+      </symbols>
+    </structType>
+    <basicType type="S1" is_const="1" name="S0"/>
+    <functionType type="F0" return_type="int">
+      <params>
+        <name type="int">a</name>
+        <name type="int">b</name>
+      </params>
+    </functionType>
+    <functionType type="F1" return_type="void">
+      <params>
+        <name type="S0">c</name>
+        <name type="P0">d</name>
+        <name type="P1">e</name>
+      </params>
+    </functionType>
+  </typeTable>
+  <globalSymbols>
+    <id type="S0" sclass="tagname">
+      <name>A</name>
+    </id>
+    <id type="F0" sclass="extern_def">
+      <name>f</name>
+    </id>
+    <id type="F1" sclass="extern_def">
+      <name>test</name>
+    </id>
+  </globalSymbols>
+  <globalDeclarations>
+    <functionDecl>
+      <name>f</name>
+    </functionDecl>
+    <functionDefinition lineno="7" file="&lt;stdin&gt;">
+      <name>test</name>
+      <symbols>
+        <id type="S0" sclass="param">
+          <name>c</name>
+        </id>
+        <id type="P0" sclass="param">
+          <name>d</name>
+        </id>
+        <id type="P1" sclass="param">
+          <name>e</name>
+        </id>
+      </symbols>
+      <params>
+        <name type="S0">c</name>
+        <name type="P0">d</name>
+        <name type="P1">e</name>
+      </params>
+      <body>
+        <compoundStatement lineno="7" file="&lt;stdin&gt;">
+          <symbols>
+          </symbols>
+          <declarations/>
+          <body>
+            <exprStatement lineno="8" file="&lt;stdin&gt;">
+              <functionCall type="int">
+                <function>
+                  <funcAddr type="P2">f</funcAddr>
+                </function>
+                <arguments>
+                  <intConstant type="int">1</intConstant>
+                  <intConstant type="int">2</intConstant>
+                </arguments>
+              </functionCall>
+            </exprStatement>
+          </body>
+        </compoundStatement>
+      </body>
+    </functionDefinition>
+  </globalDeclarations>
+</XcodeProgram>

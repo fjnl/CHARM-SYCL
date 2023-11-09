@@ -1,0 +1,28 @@
+BasedOnStyle: Google
+IndentWidth: 4
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty
+AccessModifierOffset: -4
+AlwaysBreakTemplateDeclarations: Yes
+ColumnLimit: 96
+Standard: c++20
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Merge
+IncludeCategories:
+  - Regex: '<[a-z_]+>'
+    Priority: 1
+  - Regex: '<(catch2|clang|llvm|nlohmann|fmt)/.*'
+    Priority: 5
+  - Regex: '<charm/.*/(config|fwd).hpp>'
+    Priority: 8
+  - Regex: '<charm/.*/detail/.*'
+    Priority: 12
+  - Regex: '<charm/.*>'
+    Priority: 10
+  - Regex: '".*"'
+    Priority: 20
+  - Regex: '.*'
+    Priority: 5
+IndentPPDirectives: AfterHash

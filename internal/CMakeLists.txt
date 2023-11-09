@@ -1,0 +1,8 @@
+add_subdirectory(clang-sycl)
+add_subdirectory(info_gen)
+add_subdirectory(item_gen)
+add_subdirectory(math_gen)
+add_subdirectory(packed_type_gen)
+add_subdirectory(utils)
+add_subdirectory(vec_gen)
+add_subdirectory(xcml)

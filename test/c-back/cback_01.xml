@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<XcodeProgram source="&lt;stdin&gt;" language="C" time="2023-06-06 15:09:12"
+              compiler-info="XcodeML/C-FrontEnd" version="1.3.0">
+  <typeTable>
+    <basicType type="B0" is_const="1" name="int"/>
+    <pointerType type="P0" ref="int"/>
+    <pointerType type="P1" ref="B0"/>
+    <arrayType type="A0" element_type="int" array_size="10"/>
+    <arrayType type="A2" element_type="A1" array_size="10"/>
+    <arrayType type="A1" element_type="int" array_size="20"/>
+    <arrayType type="A5" element_type="A4" array_size="10"/>
+    <arrayType type="A4" element_type="A3" array_size="20"/>
+    <arrayType type="A3" element_type="int" array_size="30"/>
+    <functionType type="F0" return_type="void">
+      <params>
+        <name type="int">x1</name>
+      </params>
+    </functionType>
+  </typeTable>
+  <globalSymbols>
+    <id type="F0" sclass="extern_def">
+      <name>test</name>
+    </id>
+  </globalSymbols>
+  <globalDeclarations>
+    <functionDefinition lineno="1" file="&lt;stdin&gt;">
+      <name>test</name>
+      <symbols>
+        <id type="int" sclass="param">
+          <name>x1</name>
+        </id>
+      </symbols>
+      <params>
+        <name type="int">x1</name>
+      </params>
+      <body>
+        <compoundStatement lineno="1" file="&lt;stdin&gt;">
+          <symbols>
+            <id type="int" sclass="auto">
+              <name>x2</name>
+            </id>
+            <id type="P0" sclass="auto">
+              <name>x3</name>
+            </id>
+            <id type="P1" sclass="auto">
+              <name>x4</name>
+            </id>
+            <id type="A0" sclass="auto">
+              <name>x5</name>
+            </id>
+            <id type="A2" sclass="auto">
+              <name>x6</name>
+            </id>
+            <id type="A5" sclass="auto">
+              <name>x7</name>
+            </id>
+            <id type="char" sclass="auto">
+              <name>x9</name>
+            </id>
+            <id type="unsigned_char" sclass="auto">
+              <name>x10</name>
+            </id>
+            <id type="short" sclass="auto">
+              <name>x11</name>
+            </id>
+            <id type="unsigned_short" sclass="auto">
+              <name>x12</name>
+            </id>
+            <id type="int" sclass="auto">
+              <name>x13</name>
+            </id>
+            <id type="unsigned" sclass="auto">
+              <name>x14</name>
+            </id>
+            <id type="long" sclass="auto">
+              <name>x15</name>
+            </id>
+            <id type="unsigned_long" sclass="auto">
+              <name>x16</name>
+            </id>
+            <id type="long_long" sclass="auto">
+              <name>x17</name>
+            </id>
+            <id type="unsigned_long_long" sclass="auto">
+              <name>x18</name>
+            </id>
+            <id type="float" sclass="auto">
+              <name>x19</name>
+            </id>
+            <id type="double" sclass="auto">
+              <name>x20</name>
+            </id>
+          </symbols>
+          <declarations>
+            <varDecl lineno="2" file="&lt;stdin&gt;">
+              <name>x2</name>
+            </varDecl>
+            <varDecl lineno="3" file="&lt;stdin&gt;">
+              <name>x3</name>
+            </varDecl>
+            <varDecl lineno="4" file="&lt;stdin&gt;">
+              <name>x4</name>
+            </varDecl>
+            <varDecl lineno="5" file="&lt;stdin&gt;">
+              <name>x5</name>
+            </varDecl>
+            <varDecl lineno="6" file="&lt;stdin&gt;">
+              <name>x6</name>
+            </varDecl>
+            <varDecl lineno="7" file="&lt;stdin&gt;">
+              <name>x7</name>
+            </varDecl>
+            <varDecl lineno="9" file="&lt;stdin&gt;">
+              <name>x9</name>
+            </varDecl>
+            <varDecl lineno="10" file="&lt;stdin&gt;">
+              <name>x10</name>
+            </varDecl>
+            <varDecl lineno="11" file="&lt;stdin&gt;">
+              <name>x11</name>
+            </varDecl>
+            <varDecl lineno="12" file="&lt;stdin&gt;">
+              <name>x12</name>
+            </varDecl>
+            <varDecl lineno="13" file="&lt;stdin&gt;">
+              <name>x13</name>
+            </varDecl>
+            <varDecl lineno="14" file="&lt;stdin&gt;">
+              <name>x14</name>
+            </varDecl>
+            <varDecl lineno="15" file="&lt;stdin&gt;">
+              <name>x15</name>
+            </varDecl>
+            <varDecl lineno="16" file="&lt;stdin&gt;">
+              <name>x16</name>
+            </varDecl>
+            <varDecl lineno="17" file="&lt;stdin&gt;">
+              <name>x17</name>
+            </varDecl>
+            <varDecl lineno="18" file="&lt;stdin&gt;">
+              <name>x18</name>
+            </varDecl>
+            <varDecl lineno="19" file="&lt;stdin&gt;">
+              <name>x19</name>
+            </varDecl>
+            <varDecl lineno="20" file="&lt;stdin&gt;">
+              <name>x20</name>
+            </varDecl>
+          </declarations>
+          <body>
+          </body>
+        </compoundStatement>
+      </body>
+    </functionDefinition>
+  </globalDeclarations>
+</XcodeProgram>

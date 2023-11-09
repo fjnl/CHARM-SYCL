@@ -1,0 +1,29 @@
+#pragma once
+
+#define CHARM_SYCL_NS ::cl::sycl::charm
+
+#define CHARM_SYCL_BEGIN_NAMESPACE \
+    inline namespace cl {          \
+    namespace sycl {               \
+    inline namespace charm {
+
+#define CHARM_SYCL_END_NAMESPACE \
+    }                            \
+    }                            \
+    }
+
+// clang-format off
+#cmakedefine CHARM_SYCL_VERSION "@CHARM_SYCL_VERSION@"
+// clang-format on
+
+#ifdef __SYCL_DEVICE_ONLY__
+#    define SYCL_EXTERNAL __attribute__((annotate("sycl_external")))
+#    define CHARM_SYCL_EXTERN_RUNTIME __attribute__((annotate("charm_sycl_extern_runtime")))
+#    define CHARM_SYCL_INLINE __attribute__((annotate("charm_sycl_inline")))
+#    define CHARM_SYCL_DEVICE_COPYABLE __attribute__((annotate("charm_sycl_device_copyable")))
+#else
+#    define SYCL_EXTERNAL
+#    define CHARM_SYCL_EXTERN_RUNTIME
+#    define CHARM_SYCL_INLINE
+#    define CHARM_SYCL_DEVICE_COPYABLE
+#endif
