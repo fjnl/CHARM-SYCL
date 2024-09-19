@@ -1,5 +1,5 @@
 #include <type_traits>
-#include "common.hpp"
+#include "ut_common.hpp"
 
 template <class T>
 inline T xabs(T x) {
@@ -50,8 +50,12 @@ static T vecadd(sycl::range<D> range) {
     return err;
 }
 
-TEMPLATE_TEST_CASE("vecadd", "", float) {
-    REQUIRE(vecadd<TestType, 1>(sycl::range(1000)) == 0);
-    REQUIRE(vecadd<TestType, 2>(sycl::range(10, 10)) == 0);
-    REQUIRE(vecadd<TestType, 3>(sycl::range(10, 10, 10)) == 0);
+int main() {
+    sycl::queue q;
+
+    expect(vecadd<float, 1>(sycl::range(1000)) == 0_i);
+    expect(vecadd<float, 2>(sycl::range(10, 10)) == 0_i);
+    expect(vecadd<float, 3>(sycl::range(10, 10, 10)) == 0_i);
+
+    return 0;
 }

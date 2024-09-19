@@ -1,0 +1,5 @@
+<% if decl { %>
+<% include!("decl.stpl"); %>
+<% } else { %>
+<% include!("impl.stpl"); %>
+<% } %>

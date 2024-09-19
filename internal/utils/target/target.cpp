@@ -5,17 +5,8 @@
 
 namespace {
 
-// clang-format off
 std::vector<utils::target> const default_targets_vec = {
-    utils::target::CPU_OPENMP
-#ifdef CHARM_SYCL_HAVE_NVIDIA_CUDA
-    , utils::target::NVIDIA_CUDA
-#endif
-#ifdef CHARM_SYCL_HAVE_AMD_HIP
-    , utils::target::AMD_HIP
-#endif
-};
-// clang-format on
+    utils::target::CPU_OPENMP, utils::target::NVIDIA_CUDA, utils::target::AMD_HIP};
 
 std::vector<utils::target> const& all_targets_vec = default_targets_vec;
 

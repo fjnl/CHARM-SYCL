@@ -5,11 +5,10 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 template <typename DataT, int Dimensions>
 template <int, class>
-local_accessor<DataT, Dimensions>::local_accessor(handler& h, property_list const& propList)
+local_accessor<DataT, Dimensions>::local_accessor(handler& h, property_list const&)
 #ifndef __SYCL_DEVICE_ONLY__
     : impl_(runtime::make_local_accessor(runtime::impl_access::get_impl(h), Dimensions,
-                                         sizeof(DataT), alignof(DataT), range<3>(1, 1, 1),
-                                         runtime::impl_access::get_impl(propList).get()))
+                                         sizeof(DataT), alignof(DataT), range<3>(1, 1, 1)))
 #endif
 {
 }
@@ -17,11 +16,10 @@ local_accessor<DataT, Dimensions>::local_accessor(handler& h, property_list cons
 template <typename DataT, int Dimensions>
 template <int, class>
 local_accessor<DataT, Dimensions>::local_accessor(range<Dimensions> const& size, handler& h,
-                                                  property_list const& propList)
+                                                  property_list const&)
 #ifndef __SYCL_DEVICE_ONLY__
     : impl_(runtime::make_local_accessor(runtime::impl_access::get_impl(h), Dimensions,
-                                         sizeof(DataT), alignof(DataT), detail::extend(size),
-                                         runtime::impl_access::get_impl(propList).get()))
+                                         sizeof(DataT), alignof(DataT), detail::extend(size)))
 #endif
 {
 }
@@ -71,9 +69,9 @@ local_accessor<DataT, Dimensions>::get_pointer() const noexcept {
 #ifdef __SYCL_DEVICE_ONLY__
     if constexpr (Dimensions >= 1) {
         runtime::__charm_sycl_assume(off % 16 == 0);
-        return (pointer_type)((char*)runtime::__charm_sycl_local_memory_base() + off);
+        return reinterpret_cast<pointer_type>(reinterpret_cast<std::byte*>(ptr) + off);
     } else {
-        return (pointer_type)((char*)runtime::__charm_sycl_local_memory_base() + off);
+        return reinterpret_cast<pointer_type>(reinterpret_cast<std::byte*>(ptr) + off);
     }
 #else
     return reinterpret_cast<pointer_type>(impl_->get_pointer());

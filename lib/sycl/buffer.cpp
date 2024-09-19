@@ -5,13 +5,11 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime::impl {
 
-buffer_impl::buffer_impl(void* init_ptr, std::shared_ptr<void> const& sp, size_t elemsize,
-                         sycl::range<3> const& rng, property_list const*)
+buffer_impl::buffer_impl(void* init_ptr, size_t elemsize, sycl::range<3> const& rng)
     : elemsize_(elemsize),
       range_(rng),
       write_back_(false),
       write_back_ptr_(nullptr),
-      sp_(sp),
       dep_(impl::global_state::get_depmgr()->new_buffer(init_ptr, elemsize,
                                                         impl::convert(rng))) {}
 
@@ -62,6 +60,7 @@ void buffer_impl::do_writeback(dep::memory_access acc) {
     auto barrier = ev->create_barrier();
     barrier->add(*ev);
     barrier->wait();
+    ev->release_barrier(barrier);
 }
 
 void* buffer_impl::get_pointer() {
@@ -80,20 +79,16 @@ size_t buffer_impl::elem_size() const {
     return elemsize_;
 }
 
-std::shared_ptr<buffer_impl> make_buffer(void* init_ptr, std::shared_ptr<void> const& sp,
-                                         size_t elemsize, range<3> const& rng,
-                                         property_list const* props) {
-    return std::make_shared<buffer_impl>(init_ptr, sp, elemsize, rng, props);
+intrusive_ptr<buffer_impl> make_buffer(void* init_ptr, size_t elemsize, range<3> const& rng) {
+    return make_intrusive<buffer_impl>(init_ptr, elemsize, rng);
 }
 
 }  // namespace runtime::impl
 
 namespace runtime {
 
-std::shared_ptr<buffer> make_buffer(void* init_ptr, std::shared_ptr<void> const& sp,
-                                    size_t elemsize, range<3> const& rng,
-                                    property_list const* props) {
-    return impl::make_buffer(init_ptr, sp, elemsize, rng, props);
+intrusive_ptr<buffer> make_buffer(void* init_ptr, size_t elemsize, range<3> const& rng) {
+    return impl::make_buffer(init_ptr, elemsize, rng);
 }
 
 }  // namespace runtime

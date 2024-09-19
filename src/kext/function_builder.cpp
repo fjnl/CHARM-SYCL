@@ -1,8 +1,27 @@
 #include <utility>
-#include <clang/AST/ASTContext.h>
 #include <utils/naming.hpp>
 #include <xcml_type.hpp>
 #include "transform_info.hpp"
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+
+#include <clang/AST/ASTContext.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
 
 struct function_builder::impl {
     explicit impl(transform_info& info, std::string_view name) : info_(info), prg_(info.prg()) {
@@ -111,9 +130,6 @@ xcml::var_ref_ptr function_builder::add_param(clang::QualType const& type0,
                                               std::string_view name) {
     auto type(type0);
 
-    if (type->isRecordType()) {
-        type = pimpl_->info_.ctx().getPointerType(type);
-    }
     if (auto decayed = clang::dyn_cast<clang::DecayedType>(type)) {
         type = decayed->getOriginalType();
     }
@@ -175,4 +191,8 @@ xcml::function_call_ptr function_builder::call_expr() {
 
 std::string const& function_builder::function_type() const {
     return pimpl_->ft_->type;
+}
+
+xcml::function_definition_ptr const& function_builder::defi() {
+    return pimpl_->fd_;
 }

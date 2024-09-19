@@ -1,27 +1,7 @@
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-enable_asan_if_debug()
-
-check_cxx_compiler_flag("-Wno-unused-parameter" CXX_HAVE_WNO_UNUSED_PARAMETER)
-
-if(CXX_HAVE_WNO_UNUSED_PARAMETER)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
-endif()
-
-check_cxx_compiler_flag("-Wno-deprecated-enum-enum-conversion" HAVE_WNO_DEPRECATED_ENUM_ENUM_COVERSION)
-
-if(HAVE_WNO_DEPRECATED_ENUM_ENUM_COVERSION)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-enum-enum-conversion")
-endif()
-
-check_cxx_compiler_flag("-Wno-deprecated-anon-enum-enum-conversion" HAVE_WNO_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
-
-if(HAVE_WNO_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-anon-enum-enum-conversion")
-endif()
-
-add_executable(
-    charm-kext
-
+add_library(
+    cscc-kext
+    OBJECT
+    ast_visitor.cpp
     charm-kext.cpp
     decl_visitor.cpp
     error_trace.cpp
@@ -32,12 +12,25 @@ add_executable(
     transform_info.cpp
     transform.cpp
     utils.cpp
+    visitor_base.cpp
 )
-target_include_directories(charm-kext PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(charm-kext PRIVATE sycl-headers clsy xcml utils fmt::fmt pugixml::pugixml)
+target_include_directories(cscc-kext PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${LLVM_INCLUDE_DIRS}")
+target_link_libraries(cscc-kext PRIVATE sycl-headers xcml utils fmt::fmt pugixml::pugixml)
 
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
-    target_compile_options(charm-kext PRIVATE -fno-rtti)
+if(NOT CSCC_PORTABLE_MODE AND CHARM_SYCL_USE_CLANG_DYLIB)
+    if(NOT TARGET LLVM)
+        message(FATAL_ERROR "cannot find LLVM dylib")
+    endif()
+
+    if(NOT CLANG_LINK_CLANG_DYLIB OR NOT TARGET clang-cpp)
+        message(FATAL_ERROR "cannot find clang dylib")
+    endif()
+
+    target_link_libraries(cscc-kext PRIVATE LLVM clang-cpp)
+else()
+    target_link_libraries(cscc-kext PRIVATE clangTooling)
 endif()
 
-install(TARGETS charm-kext)
+if(${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+    target_compile_options(cscc-kext PRIVATE -fno-rtti)
+endif()

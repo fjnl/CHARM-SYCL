@@ -19,9 +19,11 @@ struct device;
 struct memory_domain;
 struct buffer;
 struct task;
-struct event;
 
+using dep::acc_linear_off;
 using dep::accessor;
+using dep::event;
+using dep::event_barrier;
 using dep::id;
 using dep::memory_access;
 using dep::nd_range;
@@ -32,6 +34,16 @@ using dom_id = uint_fast32_t;
 
 static constexpr auto INVALID_DOM_ID = static_cast<dom_id>(-1);
 static constexpr auto HOST_DOM_ID = static_cast<dom_id>(0);
+
+struct func_desc {
+    char const* name;
+    void (*cpu)(void**);
+    void* cpu_tag;
+    void (*cuda)(void**);
+    void* cuda_tag;
+    void (*hip)(void**);
+    void* hip_tag;
+};
 
 struct subsystem {
     virtual ~subsystem() = default;
@@ -106,6 +118,7 @@ struct task {
 
     virtual void enable_profiling() = 0;
 
+    virtual void depends_on(event const& task) = 0;
     virtual void depends_on(std::shared_ptr<task> const& task) = 0;
 
     // 1.a. Select Device
@@ -154,10 +167,17 @@ struct task {
                          size_t dst_off_byte, size_t i_dst_stride, size_t j_dst_stride,
                          size_t i_loop, size_t j_loop, size_t len_byte) = 0;
 
+    virtual void fill(buffer& dst, size_t byte_len) = 0;
+
+    // 2.d set function descriptor
+    virtual void set_desc(func_desc const* desc) {
+        (void)desc;
+        std::abort();
+    }
+
     // 3. Set parallelism
     virtual void set_single() = 0;
     virtual void set_range(range const& range) = 0;
-    virtual void set_range(range const& range, id const& offset) = 0;
     virtual void set_nd_range(nd_range const& ndr) = 0;
 
     // Local Memory
@@ -173,9 +193,9 @@ struct task {
     virtual std::unique_ptr<event> submit() = 0;
 };
 
-struct event : dep::event {};
+// struct event : dep::event {};
 
-struct event_barrier : dep::event_barrier {};
+// struct event_barrier : dep::event_barrier {};
 
 std::unique_ptr<subsystem> make_subsystem();
 

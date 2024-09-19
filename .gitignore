@@ -2,3 +2,6 @@
 .DS_Store
 /build
 __pycache__
+generated/.clang-format
+generated/Cargo.lock
+generated/target

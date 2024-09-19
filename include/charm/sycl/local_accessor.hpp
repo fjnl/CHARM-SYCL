@@ -117,12 +117,31 @@ public:
     }
 
 private:
+    friend struct sycl::handler;
+
+#ifndef __SYCL_DEVICE_ONLY__
+    void into_device() {
+        off = this->impl_->get_offset();
+        size0 = this->impl_->get_range()[0];
+        size1 = this->impl_->get_range()[1];
+        size2 = this->impl_->get_range()[2];
+    }
+#endif
+
 #ifdef __SYCL_DEVICE_ONLY__
+    void* ptr;
+#else
+    runtime::local_accessor_ptr impl_;
+#endif
     size_t off;
     size_t size0, size1, size2;
-#else
-    std::shared_ptr<runtime::local_accessor> impl_;
-#endif
 };
+
+static_assert(sizeof(local_accessor<int, 1>) == sizeof(void*) + sizeof(size_t) * 4);
+#ifdef __SYCL_DEVICE_ONLY__
+static_assert(std::is_standard_layout_v<local_accessor<int, 1>>);
+static_assert(std::is_trivially_copyable_v<local_accessor<int, 1>>);
+static_assert(std::is_trivially_destructible_v<local_accessor<int, 1>>);
+#endif
 
 CHARM_SYCL_END_NAMESPACE

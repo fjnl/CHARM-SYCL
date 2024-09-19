@@ -6,10 +6,11 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime {
 
-struct event {
+struct event : refcnt_base {
     virtual ~event() = default;
 
-    virtual std::unique_ptr<event_barrier> create_barrier() = 0;
+    virtual event_barrier* create_barrier() = 0;
+    virtual void release_barrier(event_barrier*) = 0;
 
     virtual uint64_t profiling_command_submit() = 0;
     virtual uint64_t profiling_command_start() = 0;

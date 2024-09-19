@@ -1,0 +1,25 @@
+<interface name="cblas_interface${suffix}">
+    <include>complex</include>
+    <include>blas/common.hpp</include>
+
+    <type name="layout_t" type="unsigned int" tag="CBLAS_LAYOUT" />
+    <type name="trans_t" type="unsigned int" tag="CBLAS_TRANSPOSE" />
+    <type name="diag_t" type="unsigned int" tag="CBLAS_DIAG" />
+    <type name="side_t" type="unsigned int" tag="CBLAS_SIDE" />
+    <type name="uplo_t" type="unsigned int" tag="CBLAS_UPLO" />
+
+    <const type="layout_t" name="COL_MAJOR" value="102" />
+
+    <const type="trans_t" name="TRANS_N" value="111" />
+    <const type="trans_t" name="TRANS_T" value="112" />
+    <const type="trans_t" name="TRANS_C" value="113" />
+
+    <const type="uplo_t" name="UPLO_U" value="121" />
+    <const type="uplo_t" name="UPLO_L" value="122" />
+
+    <const type="diag_t" name="DIAG_N" value="131" />
+    <const type="diag_t" name="DIAG_U" value="132" />
+
+    <const type="side_t" name="SIDE_L" value="141" />
+    <const type="side_t" name="SIDE_R" value="142" />
+</interface>

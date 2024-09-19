@@ -1,87 +1,84 @@
 #include <cinttypes>
 #include <limits>
-#include "common.hpp"
+#include "ut_common.hpp"
 
 enum X { a = 100, b };
 
 enum Y : uintmax_t { c, d = std::numeric_limits<uintmax_t>::max() };
 
-TEST_CASE("enum 1 [X::a]", "") {
+int main() {
     sycl::queue q;
+    "enum_1"_test = [&]() {
+        unsigned long result = -1;
 
-    unsigned long result = -1;
+        {
+            sycl::buffer<unsigned long, 1> x(&result, {1});
 
-    {
-        sycl::buffer<unsigned long, 1> x(&result, {1});
+            auto ev = q.submit([&](sycl::handler& h) {
+                auto out = x.get_access(h);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            auto out = x.get_access(h);
-
-            h.single_task([=] {
-                out[0] = X::a;
+                h.single_task([=] {
+                    out[0] = X::a;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == X::a);
-}
+        expect(eq(result, X::a));
+    };
 
-TEST_CASE("enum 2 [X::b]", "") {
-    sycl::queue q;
+    "enum_2"_test = [&]() {
+        unsigned long result = -1;
 
-    unsigned long result = -1;
+        {
+            sycl::buffer<unsigned long, 1> x(&result, {1});
 
-    {
-        sycl::buffer<unsigned long, 1> x(&result, {1});
+            auto ev = q.submit([&](sycl::handler& h) {
+                auto out = x.get_access(h);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            auto out = x.get_access(h);
-
-            h.single_task([=] {
-                out[0] = X::b;
+                h.single_task([=] {
+                    out[0] = X::b;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == X::b);
-}
+        expect(eq(result, X::b));
+    };
 
-TEST_CASE("enum 3 [Y::c]", "") {
-    sycl::queue q;
+    "enum_3"_test = [&]() {
+        unsigned long result = -1;
 
-    unsigned long result = -1;
+        {
+            sycl::buffer<unsigned long, 1> x(&result, {1});
 
-    {
-        sycl::buffer<unsigned long, 1> x(&result, {1});
+            auto ev = q.submit([&](sycl::handler& h) {
+                auto out = x.get_access(h);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            auto out = x.get_access(h);
-
-            h.single_task([=] {
-                out[0] = Y::c;
+                h.single_task([=] {
+                    out[0] = Y::c;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == Y::c);
-}
+        expect(eq(result, Y::c));
+    };
 
-TEST_CASE("enum 4 [Y::d]", "") {
-    sycl::queue q;
+    "enum_4"_test = [&]() {
+        unsigned long result = -1;
 
-    unsigned long result = -1;
+        {
+            sycl::buffer<unsigned long, 1> x(&result, {1});
 
-    {
-        sycl::buffer<unsigned long, 1> x(&result, {1});
+            auto ev = q.submit([&](sycl::handler& h) {
+                auto out = x.get_access(h);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            auto out = x.get_access(h);
-
-            h.single_task([=] {
-                out[0] = Y::d;
+                h.single_task([=] {
+                    out[0] = Y::d;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == Y::d);
+        expect(eq(result, Y::d));
+    };
+
+    return 0;
 }

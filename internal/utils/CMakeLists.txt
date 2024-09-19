@@ -1,4 +1,5 @@
+add_subdirectory(errors)
 add_subdirectory(hash)
-add_subdirectory(logging)
+add_subdirectory(io)
 add_subdirectory(naming)
 add_subdirectory(target)

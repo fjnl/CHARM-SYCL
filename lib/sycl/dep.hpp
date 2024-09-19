@@ -7,8 +7,9 @@ CHARM_SYCL_BEGIN_NAMESPACE
 namespace rts {
 
 struct device;
-struct subsystem;
+struct func_desc;
 struct memory_domain;
+struct subsystem;
 
 }  // namespace rts
 
@@ -57,8 +58,31 @@ struct accessor {
     size_t offset[3];
 };
 
-static_assert(std::is_trivially_copyable_v<accessor>);
+// Check the memory layout requirements. See also device_accessor.hpp.
+static_assert(std::is_trivially_copyable_v<accessor>,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(std::is_standard_layout_v<accessor>,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(sizeof(accessor) == sizeof(size_t) * 6,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, size[0]) == 0,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, size[1]) == 1 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, size[2]) == 2 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, offset[0]) == 3 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, offset[1]) == 4 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(accessor, offset[2]) == 5 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
 static_assert(std::is_trivially_destructible_v<accessor>);
+
+inline size_t acc_linear_off(accessor const& acc) {
+    return acc.offset[2] + acc.offset[1] * acc.size[2] +
+           acc.offset[0] * acc.size[1] * acc.size[2];
+}
 
 struct local_accessor {
     size_t off;
@@ -68,7 +92,7 @@ struct local_accessor {
 static_assert(std::is_trivially_copyable_v<local_accessor>);
 static_assert(std::is_trivially_destructible_v<local_accessor>);
 
-enum class memory_access { read_only = 1, write_only = 2, read_write = 3 };
+enum class memory_access { none = 0, read_only = 1, write_only = 2, read_write = 3 };
 
 struct platform {
     virtual ~platform() = default;
@@ -108,6 +132,7 @@ struct task {
 
     virtual void enable_profiling() = 0;
 
+    virtual void depends_on(event const& ev) = 0;
     virtual void depends_on(std::shared_ptr<task> const& task) = 0;
 
     void lock() {
@@ -131,7 +156,6 @@ struct task {
 
     virtual void set_single() = 0;
     virtual void set_range(range const& range) = 0;
-    virtual void set_range(range const& range, id const& offset) = 0;
     virtual void set_nd_range(nd_range const& ndr) = 0;
 
     // Local Memory
@@ -175,6 +199,11 @@ struct task {
                          memory_access dst_acc, size_t dst_off_byte, size_t i_dst_stride,
                          size_t j_dst_stride, size_t i_loop, size_t j_loop,
                          size_t len_byte) = 0;
+
+    virtual void fill_zero(buffer& src, size_t len_byte) = 0;
+
+    // Function descriptor operation
+    virtual void set_desc(rts::func_desc const* desc) = 0;
 
     // 3. Acquire the global lock
     virtual void begin_params() = 0;

@@ -1,32 +1,36 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
 struct data {
     int x = 1;
     int y = 2;
 };
 
-TEST_CASE("struct2", "") {
+int main() {
     sycl::queue q;
 
-    data result;
-    result.x = -1;
-    result.y = -1;
+    "struct2"_test = [&]() {
+        data result;
+        result.x = -1;
+        result.y = -1;
 
-    {
-        sycl::buffer<data, 1> x(&result, {1});
+        {
+            sycl::buffer<data, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<data, 1, sycl::access_mode::write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<data, 1, sycl::access_mode::write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                data x;
-                xx[0] = x;
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    data x;
+                    xx[0] = x;
+                });
             });
-        });
 
-        ev.wait();
-    }
+            ev.wait();
+        }
 
-    REQUIRE(result.x == 1);
-    REQUIRE(result.y == 2);
+        expect(result.x == 1_i);
+        expect(result.y == 2_i);
+    };
+
+    return 0;
 }

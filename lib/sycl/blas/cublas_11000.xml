@@ -1,0 +1,44 @@
+<interface name="cublas_interface_11000">
+    <include>complex</include>
+    <include>cuda/cuda_interface.hpp</include>
+    <include>blas/common.hpp</include>
+
+    <type name="blas_t" type="void*" tag="cublasHandle_t" />
+    <type name="result_t" type="unsigned int" tag="cublasStatus_t" />
+    <type name="trans_t" type="unsigned int" tag="cublasOperation_t" />
+    <type name="diag_t" type="unsigned int" tag="cublasDiagType_t" />
+    <type name="side_t" type="unsigned int" tag="cublasSideMode_t" />
+    <type name="uplo_t" type="unsigned int" tag="cublasFillMode_t" />
+    <type name="CUDA" type="cuda_interface" />
+    <type name="stream_t" type="typename CUDA::stream_t" />
+
+    <const type="trans_t" name="TRANS_N" value="0" />
+    <const type="trans_t" name="TRANS_T" value="1" />
+    <const type="trans_t" name="TRANS_C" value="2" />
+
+    <const type="uplo_t" name="UPLO_L" value="0" />
+    <const type="uplo_t" name="UPLO_U" value="1" />
+
+    <const type="diag_t" name="DIAG_N" value="0" />
+    <const type="diag_t" name="DIAG_U" value="1" />
+
+    <const type="side_t" name="SIDE_L" value="0" />
+    <const type="side_t" name="SIDE_R" value="1" />
+
+    <function return="result_t" name="cublas_create" realname="cublasCreate_v2">
+        <param type="blas_t*" />
+    </function>
+
+    <function return="result_t" name="cublas_destroy" realname="cublasDestroy_v2">
+        <param type="blas_t" />
+    </function>
+
+    <function return="result_t" name="cublas_get_version" realname="cublasGetVersion_v2">
+        <param type="blas_t" name="handle" />
+        <param type="int*" name="version" />
+    </function>
+
+    <function return="char const*" name="cublas_get_status_string" realname="cublasGetStatusString">
+        <param type="result_t" />
+    </function>
+</interface>

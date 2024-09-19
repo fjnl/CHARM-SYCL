@@ -42,7 +42,7 @@ inline size_t platform::hash() const {
 
 inline std::vector<platform> platform::get_platforms() {
     std::vector<platform> res;
-    auto const& plts = runtime::get_platforms();
+    auto const plts = runtime::get_platforms();
 
     if (plts.empty()) {
         throw exception(make_error_code(errc::runtime), "No SYCL platform is registered");

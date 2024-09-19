@@ -3,7 +3,7 @@
 #include <mutex>
 #include <thread>
 #include <assert.h>
-#include <utils/logging.hpp>
+#include "logging.hpp"
 #include "rts.hpp"
 
 namespace {
@@ -167,12 +167,15 @@ struct memory_state {
     }
 
     void prepare_read(std::shared_ptr<rts::task> const& task) {
-        set_dependency(task);
+        set_dependency(task, false);
+        read_ = true;
         add_reader(task);
     }
 
     void prepare_write(std::shared_ptr<rts::task> const& task, uint64_t new_ver) {
-        set_dependency(task);
+        set_dependency(task, true);
+        read_ = true;
+        readers_.clear();
         set_writer(task);
         ver_ = new_ver;
     }
@@ -211,21 +214,21 @@ private:
         readers_.clear();
     }
 
-    void set_dependency(std::shared_ptr<rts::task> const& task) {
+    void set_dependency(std::shared_ptr<rts::task> const& task, bool wait_for_prior_readers) {
         assert(task != nullptr);
 
-        if (is_writing()) {
-            DEBUG_FMT("DEP: buffer[{}] task[{}] depends on writer[{}]", fmt::ptr(this),
-                      fmt::ptr(task.get()), fmt::ptr(writer_.get()));
+        if (writer_) {
+            DEBUG_FMT("buffer[{}] task[{}] depends on writer[{}]", format::ptr(this),
+                      format::ptr(task.get()), format::ptr(writer_.get()));
             task->depends_on(writer_);
-            clear();
-        } else if (is_reading()) {
+        }
+
+        if (wait_for_prior_readers) {
             for (auto& r : readers_) {
-                DEBUG_FMT("DEP: buffer[{}] task[{}] depends on reader[{}]", fmt::ptr(this),
-                          fmt::ptr(task.get()), fmt::ptr(r.get()));
+                DEBUG_FMT("buffer[{}] task[{}] depends on reader[{}]", format::ptr(this),
+                          format::ptr(task.get()), format::ptr(r.get()));
                 task->depends_on(r);
             }
-            clear();
         }
     }
 
@@ -322,13 +325,29 @@ private:
 
 struct task_impl final : dep::task {
     explicit task_impl(dependency_manager_impl& dep, std::shared_ptr<rts::task> rts)
-        : dep_(dep), rts_(rts) {}
+        : dep_(dep), rts_(rts) {
+        DEBUG_FMT("task[{}] create (this={})", format::ptr(rts_.get()), format::ptr(this));
+    }
+
+    ~task_impl() {
+        DEBUG_FMT("task[{}] destroy (this={})", format::ptr(rts_.get()), format::ptr(this));
+    }
 
     void enable_profiling() override {
         rts_->enable_profiling();
     }
 
+    void depends_on(dep::event const& ev) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+
+        rts_->depends_on(ev);
+    }
+
     void depends_on(std::shared_ptr<dep::task> const& task) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+
         auto task_ = std::dynamic_pointer_cast<task_impl>(task);
         rts_->depends_on(task_->rts_);
     }
@@ -345,7 +364,9 @@ struct task_impl final : dep::task {
     }
 
     void set_host_fn(std::function<void()> const& f) override {
-        DEBUG_FMT("DEP: task[{}] uses host function {}", fmt::ptr(rts_.get()), fmt::ptr(&f));
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+        DEBUG_FMT("task[{}] uses host function {}", format::ptr(rts_.get()), format::ptr(&f));
         rts_->set_host(f);
     }
 
@@ -362,11 +383,14 @@ struct task_impl final : dep::task {
         auto const& owner = buf_.owner();
 
         assert(tgt_ != nullptr);
-        DEBUG_FMT("DEP: depends: task[{}] buffer[{}] target={}", fmt::ptr(rts_.get()),
-                  fmt::ptr(&buf_.to_rts()), tgt_->id());
+        DEBUG_FMT("depends: task[{}] buffer[{}] target={} acc={}", format::ptr(rts_.get()),
+                  format::ptr(&buf_.to_rts()), tgt_->id(), static_cast<unsigned>(acc));
 
         if (buf_.has_latest(tgt_->id())) {
             switch (acc) {
+                case dep::memory_access::none:
+                    break;
+
                 case dep::memory_access::read_only:
                     dep_.local_read(rts_, buf, *tgt_);
                     break;
@@ -383,6 +407,9 @@ struct task_impl final : dep::task {
             return *tgt_;
         } else {
             switch (acc) {
+                case dep::memory_access::none:
+                    break;
+
                 case dep::memory_access::read_only:
                     dep_.transfer_read(rts_, buf, owner, *tgt_);
                     break;
@@ -402,6 +429,9 @@ struct task_impl final : dep::task {
 
     void set_buffer_param(dep::buffer& buf, dep::memory_access acc, dep::id const& offset,
                           size_t offset_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+
         auto& buf_ = dynamic_cast<buffer_impl&>(buf);
         auto const& dom = depends(buf, acc);
         rts_->set_buffer_param(buf_.to_rts(), buf_.h_ptr(), dom, acc, offset, offset_byte);
@@ -410,6 +440,8 @@ struct task_impl final : dep::task {
     void copy_1d(dep::buffer& src, dep::memory_access src_acc, size_t src_off_byte,
                  dep::buffer& dst, dep::memory_access dst_acc, size_t dst_off_byte,
                  size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
         auto& src_ = static_cast<buffer_impl&>(src);
@@ -422,6 +454,8 @@ struct task_impl final : dep::task {
 
     void copy_1d(dep::buffer& src, dep::memory_access src_acc, size_t src_off_byte, void* dst,
                  size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& src_ = static_cast<buffer_impl&>(src);
         auto const& src_dom = depends(src, src_acc);
 
@@ -431,6 +465,8 @@ struct task_impl final : dep::task {
 
     void copy_1d(void const* src, dep::buffer& dst, dep::memory_access dst_acc,
                  size_t dst_off_byte, size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
 
@@ -442,6 +478,8 @@ struct task_impl final : dep::task {
                  size_t src_stride, dep::buffer& dst, dep::memory_access dst_acc,
                  size_t dst_off_byte, size_t dst_stride, size_t loop,
                  size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
         auto& src_ = static_cast<buffer_impl&>(src);
@@ -456,6 +494,8 @@ struct task_impl final : dep::task {
     void copy_2d(dep::buffer& src, dep::memory_access src_acc, size_t src_off_byte,
                  size_t src_stride, void* dst, size_t dst_stride, size_t loop,
                  size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& src_ = static_cast<buffer_impl&>(src);
         auto const& src_dom = depends(src, src_acc);
 
@@ -466,6 +506,8 @@ struct task_impl final : dep::task {
     void copy_2d(void const* src, size_t src_stride, dep::buffer& dst,
                  dep::memory_access dst_acc, size_t dst_off_byte, size_t dst_stride,
                  size_t loop, size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
 
@@ -477,6 +519,8 @@ struct task_impl final : dep::task {
                  size_t i_src_stride, size_t j_src_stride, dep::buffer& dst,
                  dep::memory_access dst_acc, size_t dst_off_byte, size_t i_dst_stride,
                  size_t j_dst_stride, size_t i_loop, size_t j_loop, size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
         auto& src_ = static_cast<buffer_impl&>(src);
@@ -491,6 +535,8 @@ struct task_impl final : dep::task {
     void copy_3d(dep::buffer& src, dep::memory_access src_acc, size_t src_off_byte,
                  size_t i_src_stride, size_t j_src_stride, void* dst, size_t i_dst_stride,
                  size_t j_dst_stride, size_t i_loop, size_t j_loop, size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& src_ = static_cast<buffer_impl&>(src);
         auto const& src_dom = depends(src, src_acc);
 
@@ -502,6 +548,8 @@ struct task_impl final : dep::task {
     void copy_3d(void const* src, size_t i_src_stride, size_t j_src_stride, dep::buffer& dst,
                  dep::memory_access dst_acc, size_t dst_off_byte, size_t i_dst_stride,
                  size_t j_dst_stride, size_t i_loop, size_t j_loop, size_t len_byte) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         auto& dst_ = static_cast<buffer_impl&>(dst);
         auto const& dst_dom = depends(dst, dst_acc);
 
@@ -510,9 +558,24 @@ struct task_impl final : dep::task {
                       i_dst_stride, j_dst_stride, i_loop, j_loop, len_byte);
     }
 
+    void fill_zero(dep::buffer& dst, size_t byte_len) override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+        auto& dst_ = static_cast<buffer_impl&>(dst);
+        depends(dst, dep::memory_access::write_only);
+        rts_->fill(dst_.to_rts(), byte_len);
+    }
+
     void set_kernel(char const* name, uint32_t hash) override {
-        DEBUG_FMT("DEP: task[{}] uses `{}`", fmt::ptr(rts_.get()), name);
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
+        DEBUG_FMT("task[{}] uses `{}`", format::ptr(rts_.get()), name);
         rts_->set_kernel(name, hash);
+    }
+
+    void set_desc(rts::func_desc const* desc) override {
+        DEBUG_FMT("task[{}] uses descriptor `{}`", format::ptr(rts_.get()), desc->name);
+        rts_->set_desc(desc);
     }
 
     void set_single() override {
@@ -521,10 +584,6 @@ struct task_impl final : dep::task {
 
     void set_range(dep::range const& r) override {
         rts_->set_range(r);
-    }
-
-    void set_range(dep::range const& range, dep::id const& offset) override {
-        rts_->set_range(range, offset);
     }
 
     void set_nd_range(dep::nd_range const& ndr) override {
@@ -540,6 +599,8 @@ struct task_impl final : dep::task {
     }
 
     std::unique_ptr<dep::event> submit() override {
+        DEBUG_FMT("task[{}] {} (this={})", format::ptr(rts_.get()), __func__,
+                  format::ptr(this));
         std::shared_ptr<rts::task> t(std::move(rts_));
         return t->submit();
     }
@@ -585,7 +646,8 @@ void dependency_manager_impl::local_read(std::shared_ptr<rts::task> const& task,
 
     auto& ss = buf_.get_state(dom.id());
 
-    DEBUG_FMT("buffer L-RO[{}]: v{}@dom{:x}", fmt::ptr(&buf_.to_rts()), ss.version(), dom.id());
+    DEBUG_FMT("buffer L-RO[{}]: v{}@dom{:x}", format::ptr(&buf_.to_rts()), ss.version(),
+              dom.id());
 
     ss.prepare_read(task);
 }
@@ -597,7 +659,7 @@ void dependency_manager_impl::local_write(std::shared_ptr<rts::task> const& task
     auto& ss = buf_.get_state(dom.id());
     auto const new_ver = ss.version() + 1;
 
-    DEBUG_FMT("DEP: buffer L-WO[{}]: (v{} -> v{})@dom{:x}", fmt::ptr(&buf_.to_rts()),
+    DEBUG_FMT("buffer L-WO[{}]: (v{} -> v{})@dom{:x}", format::ptr(&buf_.to_rts()),
               ss.version(), new_ver, dom.id());
 
     ss.prepare_write(task, new_ver);
@@ -619,8 +681,8 @@ void dependency_manager_impl::transfer_read(std::shared_ptr<rts::task> const& ta
     auto& ds = buf_.get_state(dst.id());
     auto const new_ver = ss.version();
 
-    DEBUG_FMT("DEP: buffer T-RO[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}",
-              fmt::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
+    DEBUG_FMT("buffer T-RO[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}",
+              format::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
               dst.id());
 
     ss.prepare_read(task);
@@ -636,8 +698,8 @@ void dependency_manager_impl::transfer_write(std::shared_ptr<rts::task> const& t
     auto& ds = buf_.get_state(dst.id());
     auto const new_ver = ss.version() + 1;
 
-    DEBUG_FMT("DEP: buffer T-WO[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}",
-              fmt::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
+    DEBUG_FMT("buffer T-WO[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}",
+              format::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
               dst.id());
 
     ds.prepare_write(task, new_ver);
@@ -654,8 +716,8 @@ void dependency_manager_impl::transfer_read_write(std::shared_ptr<rts::task> con
     auto& ds = buf_.get_state(dst.id());
     auto const new_ver = ss.version() + 1;
 
-    DEBUG_FMT("DEP: buffer T-RW[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}\n",
-              fmt::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
+    DEBUG_FMT("buffer T-RW[{}]: v{}@dom{:x} --> (v{} -> v{})@dom{:x}",
+              format::ptr(&buf_.to_rts()), ss.version(), src.id(), ds.version(), new_ver,
               dst.id());
 
     ss.prepare_read(task);

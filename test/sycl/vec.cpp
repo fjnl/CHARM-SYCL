@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
 #define TEST_SZ(...)                                                             \
     {                                                                            \
@@ -32,7 +32,7 @@
 
 #define TEST_BOOLVEC(...)                                                        \
     {                                                                            \
-        boolvec = boolvec_t(false);                                              \
+        boolvec = boolvec_t(0);                                                  \
         sycl::buffer<boolvec_t, 1> x(&boolvec, {1});                             \
         q.submit([&](sycl::handler& h) {                                         \
             sycl::accessor<boolvec_t, 1, sycl::access_mode::write> xx(x, h);     \
@@ -40,146 +40,179 @@
         });                                                                      \
     }
 
-TEST_CASE("vec", "") {
+int main() {
+    "vec -- size and align (Host)"_test = []() {
+#define SIZE_TEST(T, N) expect(eq(sizeof(sycl::vec<T, N>), sizeof(T) * (N == 3 ? 4 : N)))
+#define ALIGN_TEST(T, N) expect(eq(alignof(sycl::vec<T, N>), sizeof(sycl::vec<T, N>)))
+
+#define TEST(T, N)   \
+    SIZE_TEST(T, N); \
+    ALIGN_TEST(T, N)
+
+#define TEST_T(T) \
+    TEST(T, 1);   \
+    TEST(T, 2);   \
+    TEST(T, 3);   \
+    TEST(T, 4);   \
+    TEST(T, 8);   \
+    TEST(T, 16)
+        TEST_T(char);
+        TEST_T(unsigned char);
+        TEST_T(short);
+        TEST_T(unsigned short);
+        TEST_T(int);
+        TEST_T(unsigned int);
+        TEST_T(long);
+        TEST_T(unsigned long);
+        TEST_T(long long);
+        TEST_T(unsigned long long);
+        TEST_T(float);
+        TEST_T(double);
+    };
+
     using vec_t = sycl::vec<int, 4>;
     using halfvec_t = sycl::vec<int, 2>;
-    using boolvec_t = sycl::vec<bool, 4>;
-
+    using boolvec_t = sycl::vec<int, 4>;
     sycl::queue q;
-    size_t sz;
-    vec_t vec;
-    boolvec_t boolvec;
-    int elem;
 
-    TEST_SZ({
-        vec_t v;
-        xx[0] = v.byte_size();
-    })
+    "vec"_test = [&]() {
+        size_t sz;
+        vec_t vec;
+        boolvec_t boolvec;
+        int elem;
 
-    REQUIRE(sz == sizeof(int) * 4);
+        TEST_SZ({
+            vec_t v;
+            xx[0] = v.byte_size();
+        })
 
-    TEST_SZ({
-        vec_t v;
-        xx[0] = v.size();
-    })
+        expect(eq(sz, sizeof(int) * 4));
 
-    REQUIRE(sz == 4);
+        TEST_SZ({
+            vec_t v;
+            xx[0] = v.size();
+        })
 
-    TEST_VEC({
-        vec_t v(9999);
-        xx[0] = v;
-    })
+        expect(sz == 4_i);
 
-    REQUIRE(vec[0] == 9999);
-    REQUIRE(vec[1] == 9999);
-    REQUIRE(vec[2] == 9999);
-    REQUIRE(vec[3] == 9999);
+        TEST_VEC({
+            vec_t v(9999);
+            xx[0] = v;
+        })
 
-    TEST_VEC({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v;
-    })
+        expect(vec[0] == 9999_i);
+        expect(vec[1] == 9999_i);
+        expect(vec[2] == 9999_i);
+        expect(vec[3] == 9999_i);
 
-    REQUIRE(vec[0] == 1);
-    REQUIRE(vec[1] == 2);
-    REQUIRE(vec[2] == 3);
-    REQUIRE(vec[3] == 4);
+        TEST_VEC({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v;
+        })
 
-    TEST_VEC({
-        halfvec_t v1(2, 3);
-        vec_t v(1, v1, 4);
-        xx[0] = v;
-    })
+        expect(vec[0] == 1_i);
+        expect(vec[1] == 2_i);
+        expect(vec[2] == 3_i);
+        expect(vec[3] == 4_i);
 
-    REQUIRE(vec[0] == 1);
-    REQUIRE(vec[1] == 2);
-    REQUIRE(vec[2] == 3);
-    REQUIRE(vec[3] == 4);
+        TEST_VEC({
+            halfvec_t v1(2, 3);
+            vec_t v(1, v1, 4);
+            xx[0] = v;
+        })
 
-    TEST_VEC({
-        halfvec_t v1(1, 2), v2(3, 4);
-        vec_t v(v1, v2);
-        xx[0] = v;
-    })
+        expect(vec[0] == 1_i);
+        expect(vec[1] == 2_i);
+        expect(vec[2] == 3_i);
+        expect(vec[3] == 4_i);
 
-    REQUIRE(vec[0] == 1);
-    REQUIRE(vec[1] == 2);
-    REQUIRE(vec[2] == 3);
-    REQUIRE(vec[3] == 4);
+        TEST_VEC({
+            halfvec_t v1(1, 2), v2(3, 4);
+            vec_t v(v1, v2);
+            xx[0] = v;
+        })
 
-    TEST_VEC({
-        vec_t v1(1), v2(2);
-        v1 += v2;
-        xx[0] = v1;
-    })
+        expect(vec[0] == 1_i);
+        expect(vec[1] == 2_i);
+        expect(vec[2] == 3_i);
+        expect(vec[3] == 4_i);
 
-    REQUIRE(vec[0] == 3);
-    REQUIRE(vec[1] == 3);
-    REQUIRE(vec[2] == 3);
-    REQUIRE(vec[3] == 3);
+        TEST_VEC({
+            vec_t v1(1), v2(2);
+            v1 += v2;
+            xx[0] = v1;
+        })
 
-    TEST_VEC({
-        vec_t v1(1), v2(2);
-        xx[0] = v1 + v2;
-    })
+        expect(vec[0] == 3_i);
+        expect(vec[1] == 3_i);
+        expect(vec[2] == 3_i);
+        expect(vec[3] == 3_i);
 
-    REQUIRE(vec[0] == 3);
-    REQUIRE(vec[1] == 3);
-    REQUIRE(vec[2] == 3);
-    REQUIRE(vec[3] == 3);
+        TEST_VEC({
+            vec_t v1(1), v2(2);
+            xx[0] = v1 + v2;
+        })
 
-    TEST_BOOLVEC({
-        vec_t v1(1), v2(1);
-        xx[0] = v1 == v2;
-    });
+        expect(vec[0] == 3_i);
+        expect(vec[1] == 3_i);
+        expect(vec[2] == 3_i);
+        expect(vec[3] == 3_i);
 
-    REQUIRE(boolvec[0] == true);
-    REQUIRE(boolvec[1] == true);
-    REQUIRE(boolvec[2] == true);
-    REQUIRE(boolvec[3] == true);
+        TEST_BOOLVEC({
+            vec_t v1(1), v2(1);
+            xx[0] = v1 == v2;
+        });
 
-    TEST_BOOLVEC({
-        vec_t v1(1), v2(2);
-        xx[0] = v1 != v2;
-    });
+        expect(boolvec[0] == -1_i);
+        expect(boolvec[1] == -1_i);
+        expect(boolvec[2] == -1_i);
+        expect(boolvec[3] == -1_i);
 
-    REQUIRE(boolvec[0] == true);
-    REQUIRE(boolvec[1] == true);
-    REQUIRE(boolvec[2] == true);
-    REQUIRE(boolvec[3] == true);
+        TEST_BOOLVEC({
+            vec_t v1(1), v2(2);
+            xx[0] = v1 != v2;
+        });
 
-    TEST_ELEM({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v.x();
-    })
+        expect(boolvec[0] == -1_i);
+        expect(boolvec[1] == -1_i);
+        expect(boolvec[2] == -1_i);
+        expect(boolvec[3] == -1_i);
 
-    REQUIRE(elem == 1);
+        TEST_ELEM({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v.x();
+        })
 
-    TEST_ELEM({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v.y();
-    })
+        expect(elem == 1_i);
 
-    REQUIRE(elem == 2);
+        TEST_ELEM({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v.y();
+        })
 
-    TEST_ELEM({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v.z();
-    })
+        expect(elem == 2_i);
 
-    REQUIRE(elem == 3);
+        TEST_ELEM({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v.z();
+        })
 
-    TEST_ELEM({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v.w();
-    })
+        expect(elem == 3_i);
 
-    REQUIRE(elem == 4);
+        TEST_ELEM({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v.w();
+        })
 
-    TEST_ELEM({
-        vec_t v(1, 2, 3, 4);
-        xx[0] = v.a();
-    })
+        expect(elem == 4_i);
 
-    REQUIRE(elem == 4);
+        TEST_ELEM({
+            vec_t v(1, 2, 3, 4);
+            xx[0] = v.a();
+        })
+
+        expect(elem == 4_i);
+    };
+
+    return 0;
 }

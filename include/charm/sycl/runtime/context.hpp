@@ -5,21 +5,17 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime {
 
-struct context {
+struct context : refcnt_base {
     virtual ~context() {}
 
-    virtual std::shared_ptr<platform> get_platform() = 0;
+    virtual platform_ptr get_platform() = 0;
 
-    virtual std::vector<std::shared_ptr<device>> const& get_devices() = 0;
-
-    virtual async_handler& get_async_handler() = 0;
+    virtual vec<device_ptr> const& get_devices() = 0;
 };
 
-std::shared_ptr<context> make_context(std::shared_ptr<device> const& dev,
-                                      async_handler asyncHandler, property_list const*);
+context_ptr make_context(device_ptr const& dev);
 
-std::shared_ptr<context> make_context(std::vector<std::shared_ptr<device>> const& devList,
-                                      async_handler asyncHandler, property_list const*);
+context_ptr make_context(vec_view<device_ptr> const& devList);
 
 }  // namespace runtime
 

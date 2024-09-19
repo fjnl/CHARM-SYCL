@@ -5,7 +5,7 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime {
 
-struct buffer {
+struct buffer : refcnt_base {
     virtual ~buffer() = default;
 
     virtual void write_back() = 0;

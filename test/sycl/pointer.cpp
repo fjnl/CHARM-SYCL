@@ -1,90 +1,95 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEST_CASE("pointer", "") {
+int main() {
     sycl::queue q;
-    int result = -1;
 
-    {
-        sycl::buffer<int, 1> x(&result, {1});
+    "pointer"_test = [&]() {
+        int result = -1;
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
+        {
+            sycl::buffer<int, 1> x(&result, {1});
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                int v = 0;
-                int* p = &v;
-                v += 1;
-                *p += 1;
-                xx[0] = v;
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
+
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    int v = 0;
+                    int* p = &v;
+                    v += 1;
+                    *p += 1;
+                    xx[0] = v;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == 2);
-}
+        expect(result == 2_i);
+    };
 
-TEST_CASE("pointer2", "") {
-    sycl::queue q;
-    int result = -1;
+    "pointer2"_test = [&]() {
+        sycl::queue q;
+        int result = -1;
 
-    {
-        sycl::buffer<int, 1> x(&result, {1});
+        {
+            sycl::buffer<int, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                int v = 0;
-                int* p = &v;
-                *p = 123;
-                xx[0] = v;
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    int v = 0;
+                    int* p = &v;
+                    *p = 123;
+                    xx[0] = v;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == 123);
-}
+        expect(result == 123_i);
+    };
 
-TEST_CASE("pointer3", "") {
-    sycl::queue q;
-    int result = -1;
+    "pointer3"_test = [&]() {
+        sycl::queue q;
+        int result = -1;
 
-    {
-        sycl::buffer<int, 1> x(&result, {1});
+        {
+            sycl::buffer<int, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                int v = 0;
-                int* const p = &v;
-                *p = 123;
-                xx[0] = v;
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    int v = 0;
+                    int* const p = &v;
+                    *p = 123;
+                    xx[0] = v;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == 123);
-}
+        expect(result == 123_i);
+    };
 
-TEST_CASE("pointer4", "") {
-    sycl::queue q;
-    int result = -1;
+    "pointer4"_test = [&]() {
+        sycl::queue q;
+        int result = -1;
 
-    {
-        sycl::buffer<int, 1> x(&result, {1});
+        {
+            sycl::buffer<int, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<int, 1, sycl::access_mode::write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                int v = 0;
-                int* const p = &v;
-                *p = 123;
-                xx[0] = v;
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    int v = 0;
+                    int* const p = &v;
+                    *p = 123;
+                    xx[0] = v;
+                });
             });
-        });
-    }
+        }
 
-    REQUIRE(result == 123);
+        expect(result == 123_i);
+    };
+
+    return 0;
 }

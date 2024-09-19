@@ -4,7 +4,7 @@
 CHARM_SYCL_BEGIN_NAMESPACE
 
 void event::wait() {
-    auto barrier = impl_->create_barrier();
+    auto barrier = std::unique_ptr<runtime::event_barrier>(impl_->create_barrier());
     barrier->add(*impl_);
     barrier->wait();
 }

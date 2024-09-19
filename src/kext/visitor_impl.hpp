@@ -1,10 +1,29 @@
 #pragma once
 
-#include <unordered_set>
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclVisitor.h>
 #include <clang/AST/StmtVisitor.h>
 #include <clang/Basic/SourceManager.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+
+#include <unordered_set>
 #include <utils/naming.hpp>
 #include <xcml_func.hpp>
 #include <xcml_type.hpp>
@@ -13,11 +32,6 @@
 #include "transform_info.hpp"
 #include "utils.hpp"
 #include "visitor.hpp"
-
-#if defined(__GNUC__) || defined(__clang__)
-#    pragma GCC diagnostic warning "-Wall"
-#    pragma GCC diagnostic warning "-Wextra"
-#endif
 
 namespace u = xcml::utils;
 
@@ -99,12 +113,26 @@ struct visitor_base {
                                                 xcml::expr_ptr* last_value = nullptr,
                                                 context const& = context());
 
+    xcml::compound_stmt_ptr visit_compound_stmt(clang::CompoundStmt const* stmt,
+                                                clang::Expr const* kernel,
+                                                clang::FunctionDecl const* function,
+                                                context const& = context());
+
+    xcml::expr_ptr visit_expr_direct(clang::Expr const* expr, context const& = context()) {
+        return visit_expr(scope_, expr, true);
+    }
+
     xcml::expr_ptr visit_expr(clang::Expr const* expr, context const& = context()) {
-        return visit_expr(scope_, expr);
+        return visit_expr(scope_, expr, false);
     }
 
     xcml::expr_ptr visit_expr(xcml::compound_stmt_ptr const& scope, clang::Expr const* expr,
-                              context const& = context());
+                              context const& = context()) {
+        return visit_expr(scope, expr, false);
+    }
+
+    xcml::expr_ptr visit_expr(xcml::compound_stmt_ptr const& scope, clang::Expr const* expr,
+                              bool direct, context const& = context());
 
     xcml::expr_ptr visit_expr_val(clang::Expr const* expr, context const& = context()) {
         return visit_expr_val(scope_, expr);
@@ -121,42 +149,39 @@ struct visitor_base {
         return node;
     }
 
-    xcml::function_call_ptr define_function(clang::FunctionDecl const* decl) {
-        PUSH_CONTEXT(decl);
-
-        auto const name = info_.encode_name(decl);
-
-        if (auto desc = info_.find_func(name)) {
-            return u::make_call(desc->addr);
-        }
-
-        visit_decl(nullptr, decl);
-
-        if (auto desc = info_.find_func(name)) {
-            return u::make_call(desc->addr);
-        }
-
-        not_supported(decl, ast_);
+    xcml::expr_ptr visit_expr_ref(clang::Expr const* expr, context const& = context()) {
+        return visit_expr_ref(scope_, expr);
     }
+
+    xcml::expr_ptr visit_expr_ref(xcml::compound_stmt_ptr const& scope, clang::Expr const* expr,
+                                  context const& = context());
+
+    xcml::function_call_ptr define_function(clang::Expr const* expr,
+                                            clang::FunctionDecl const* decl);
 
 protected:
     void push_expr(clang::Expr const* expr, xcml::expr_ptr const& node) {
         push_expr(scope_, expr, node);
     }
 
+    template <class Node, class HasLoc>
+    void set_loc(Node const& node, HasLoc const* expr) {
+        auto& sm = ast_.getSourceManager();
+        auto const loc = sm.getPresumedLoc(expr->getBeginLoc());
+
+        if (loc.isValid()) {
+            node->file = loc.getFilename();
+            node->line = loc.getLine();
+        } else {
+            node->file = "<invalid>";
+        }
+    }
+
     template <class HasLoc>
     void push_expr(xcml::compound_stmt_ptr const& scope, HasLoc const* expr,
                    xcml::expr_ptr const& node) {
         if (expr) {
-            auto& sm = ast_.getSourceManager();
-            auto const loc = sm.getPresumedLoc(expr->getBeginLoc());
-
-            if (loc.isValid()) {
-                node->file = loc.getFilename();
-                node->line = loc.getLine();
-            } else {
-                node->file = "<invalid>";
-            }
+            set_loc(node, expr);
         }
         u::push_expr(scope, node);
     }
@@ -172,7 +197,6 @@ protected:
 
     bool is_noop_cast(clang::CastExpr const* expr) {
         return expr->getCastKind() == clang::CK_NoOp ||
-               expr->getCastKind() == clang::CK_LValueToRValue ||
                expr->getCastKind() == clang::CK_ArrayToPointerDecay;
     }
 
@@ -180,75 +204,17 @@ protected:
         return expr->getCastKind() == clang::CK_IntegralCast ||
                expr->getCastKind() == clang::CK_IntegralToFloating ||
                expr->getCastKind() == clang::CK_FloatingCast ||
-               expr->getCastKind() == clang::CK_IntegralToBoolean;
+               expr->getCastKind() == clang::CK_IntegralToBoolean ||
+               expr->getCastKind() == clang::CK_FloatingToIntegral;
     }
 
     bool is_ptr_to_ptr_cast(clang::CastExpr const* expr) {
-        return expr->getCastKind() == clang::CK_BitCast && expr->getType()->isPointerType() &&
-               expr->getSubExpr()->getType()->isPointerType();
+        return expr->getCastKind() == clang::CK_NullToPointer ||
+               (expr->getCastKind() == clang::CK_BitCast && expr->getType()->isPointerType() &&
+                expr->getSubExpr()->getType()->isPointerType());
     }
 
-    clang::QualType expr_type(clang::Expr const* expr) {
-        if (auto ce = clang::dyn_cast<clang::CastExpr>(expr)) {
-            if (is_base_cast(ce)) {
-                auto type = expr_type(ce->getSubExpr());
-                return ast_.getPointerType(type);
-            }
-
-            if (is_integral_cast(ce) || is_ptr_to_ptr_cast(ce)) {
-                return ce->getType();
-            }
-
-            if (is_noop_cast(ce)) {
-                while (ce && is_noop_cast(ce)) {
-                    expr = ce->getSubExpr();
-                    ce = expr ? llvm::dyn_cast<clang::CastExpr>(expr) : nullptr;
-                }
-                // continue below
-            } else {
-                not_supported(expr, ast_, "Not supported cast expression type");
-            }
-        }
-
-        expr = expr->IgnoreImpCasts();
-
-        auto type = expr->getType();
-        auto const is_const = type.isConstQualified();
-
-        if (auto const* me = clang::dyn_cast<clang::MemberExpr>(expr)) {
-            type = me->getMemberDecl()->getType();
-            if (is_const && !type.isConstQualified()) {
-                type = ast_.getConstType(type);
-            }
-        } else if (auto const* dre = clang::dyn_cast<clang::DeclRefExpr>(expr)) {
-            type = dre->getDecl()->getType();
-        } else if (auto const* ce = clang::dyn_cast<clang::CallExpr>(expr)) {
-            type = clang::dyn_cast<clang::FunctionDecl>(ce->getCalleeDecl())->getReturnType();
-        }
-
-        if (auto const* ase = clang::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
-            if (type->isArrayType()) {
-                type = ast_.getBaseElementType(type);
-                type = ast_.getPointerType(type);
-            } else {
-                type = ast_.getLValueReferenceType(type);
-            }
-        } else if (type->isArrayType()) {
-            type = ast_.getArrayDecayedType(type);
-
-            if (is_const &&
-                !(type.isConstQualified() ||
-                  (type->isPointerType() && type->getPointeeType().isConstQualified()))) {
-                type = ast_.getConstType(type);
-            }
-        }
-
-        if (is_captured(expr)) {
-            type = ast_.getPointerType(type);
-        }
-
-        return type;
-    }
+    clang::QualType expr_type(clang::Expr const* expr);
 
     xcml::pointer_ref_ptr deref(xcml::expr_ptr x) {
         auto deref = xcml::new_pointer_ref();
@@ -279,31 +245,31 @@ protected:
         return false;
     }
 
-    bool is_captured(clang::Expr const* expr) {
-        if (auto const* me = clang::dyn_cast<clang::MemberExpr>(expr)) {
-            if (is_this_expr(me->getBase()) && is_kernel_functor() &&
-                is_kernel_body_processing()) {
-                return true;
-            }
+    // bool is_captured_by_kernel(clang::Expr const* expr) {
+    //     if (auto const* me = clang::dyn_cast<clang::MemberExpr>(expr)) {
+    //         if (is_this_expr(me->getBase()) && is_kernel_functor() &&
+    //             is_kernel_body_processing()) {
+    //             return true;
+    //         }
 
-            return false;
-        }
+    //         return false;
+    //     }
 
-        if (auto const* dr = clang::dyn_cast<clang::DeclRefExpr>(expr)) {
-            if (current_kernel_) {
-                for (auto [vd, _] : captured_vars(info_, current_kernel_)) {
-                    if (vd == dr->getDecl()) {
-                        return true;
-                    }
-                }
-                return false;
-            }
+    //     if (auto const* dr = clang::dyn_cast<clang::DeclRefExpr>(expr)) {
+    //         if (current_kernel_) {
+    //             for (auto [vd, _] : captured_vars(info_, current_kernel_)) {
+    //                 if (vd == dr->getDecl()) {
+    //                     return true;
+    //                 }
+    //             }
+    //             return false;
+    //         }
 
-            return false;
-        }
+    //         return false;
+    //     }
 
-        return false;
-    }
+    //     return false;
+    // }
 
     clang::Expr const* get_arg(clang::Expr const* expr, unsigned i) {
         PUSH_CONTEXT(expr);
@@ -331,81 +297,14 @@ protected:
         not_supported(expr, ast_);
     }
 
+    bool is_accessor(clang::QualType type) const {
+        accessor_type dummy;
+        return ::is_accessor(type, dummy);
+    }
+
     xcml::function_call_ptr make_call_expr(clang::Expr const* expr,
                                            xcml::expr_ptr this_ref = nullptr,
-                                           bool this_is_ptr = false) {
-        PUSH_CONTEXT(expr);
-
-        // DUMP_COLOR(expr);
-        auto const* call_expr = clang::dyn_cast<clang::CallExpr>(expr);
-        auto const* ctor_expr = clang::dyn_cast<clang::CXXConstructExpr>(expr);
-
-        if (!call_expr && !ctor_expr) {
-            not_supported(expr, ast_);
-        }
-
-        auto const* decl =
-            call_expr ? clang::dyn_cast<clang::FunctionDecl>(call_expr->getCalleeDecl())
-                      : ctor_expr->getConstructor();
-        auto const* mc = clang::dyn_cast<clang::CXXMemberCallExpr>(expr);
-        auto const* oc = clang::dyn_cast<clang::CXXOperatorCallExpr>(expr);
-        auto const* meth =
-            oc ? clang::dyn_cast<clang::CXXMethodDecl>(oc->getCalleeDecl()) : nullptr;
-        std::unordered_set<clang::Expr const*> ref_args, record_args;
-
-        for (size_t i = 0; i < decl->getNumParams(); i++) {
-            auto const arg = get_arg(expr, meth ? i + 1 : i);
-            auto const pvd = decl->getParamDecl(i);
-            auto const type = pvd->getType();
-
-            if (type->isReferenceType() || clang::isa<clang::DecayedType>(*type)) {
-                ref_args.insert(arg);
-            } else if (type->isRecordType() && !type->isPointerType() &&
-                       !type->isReferenceType()) {
-                record_args.insert(arg);
-            }
-        }
-
-        auto call = define_function(decl);
-
-        if (mc) {
-            auto const* obj = mc->getImplicitObjectArgument();
-            this_ref = visit_expr(obj);
-
-            auto const this_type = expr_type(obj);
-            this_is_ptr = this_type->isPointerType() || this_type->isReferenceType();
-        }
-        if (this_ref) {
-            if (!this_is_ptr) {
-                this_ref = u::make_addr_of(this_ref);
-            }
-            call->arguments.push_back(this_ref);
-        }
-        if (meth) {
-            ref_args.insert(get_arg(expr, 0));
-        }
-
-        for (size_t i = 0; i < num_args(expr); i++) {
-            auto const* arg = get_arg(expr, i);
-
-            if (ref_args.count(arg)) {
-                auto node = visit_expr(arg);
-                auto type = expr_type(arg);
-
-                if (!type->isReferenceType() && !type->isPointerType()) {
-                    node = u::make_addr_of(node);
-                }
-
-                call->arguments.push_back(node);
-            } else if (record_args.count(arg)) {
-                call->arguments.push_back(u::make_addr_of(visit_expr(arg)));
-            } else {
-                call->arguments.push_back(visit_expr_val(arg));
-            }
-        }
-
-        return call;
-    }
+                                           bool this_is_ptr = false);
 
     void construct_inherit(xcml::compound_stmt_ptr const& scope, clang::Decl const* for_loc,
                            xcml::expr_ptr const& this_ref, bool this_is_ptr,
@@ -418,7 +317,7 @@ protected:
             return;
         }
 
-        auto call = define_function(ctor);
+        auto call = define_function(nullptr, ctor);
         xcml::expr_ptr this_expr = this_is_ptr ? this_ref : u::make_addr_of(this_ref);
 
         call->arguments.push_back(this_expr);

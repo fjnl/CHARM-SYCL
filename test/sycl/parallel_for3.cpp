@@ -1,6 +1,7 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEMPLATE_TEST_CASE_SIG("parallel_for3", "", ((int D), D), 1, 2, 3) {
+template <int D>
+void testcase(sycl::queue& q) {
     int constexpr N = 3;
     int constexpr M = D >= 2 ? 4 : 1;
     int constexpr L = D == 3 ? 5 : 1;
@@ -33,16 +34,31 @@ TEMPLATE_TEST_CASE_SIG("parallel_for3", "", ((int D), D), 1, 2, 3) {
     for (int i = 0, l = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
             for (int k = 0; k < L; k++, l++) {
-                CAPTURE(i, j, k, l, N, M, L, X);
-
                 if constexpr (D == 1) {
-                    REQUIRE(host.at(l) == i);
+                    expect(_i(host.at(l)) == i) << "i=" << i;
                 } else if constexpr (D == 2) {
-                    REQUIRE(host.at(l) == i * K + j);
+                    expect(_i(host.at(l)) == i * K + j) << "i=" << i << "j=" << j;
                 } else {
-                    REQUIRE(host.at(l) == i * KK + j * K + k);
+                    expect(_i(host.at(l)) == i * KK + j * K + k)
+                        << "i=" << i << "j=" << j << "k=" << k;
                 }
             }
         }
     }
+}
+
+int main() {
+    sycl::queue q;
+
+    "parallel_for3 - 1"_test = [&]() {
+        testcase<1>(q);
+    };
+    "parallel_for3 - 2"_test = [&]() {
+        testcase<2>(q);
+    };
+    "parallel_for3 - 3"_test = [&]() {
+        testcase<3>(q);
+    };
+
+    return 0;
 }

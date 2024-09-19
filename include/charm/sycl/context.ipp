@@ -12,25 +12,22 @@ inline context::context(async_handler asyncHandler, const property_list& propLis
 inline context::context(const device& dev, const property_list& propList)
     : context(dev, async_handler(), propList) {}
 
-inline context::context(const device& dev, async_handler asyncHandler,
-                        const property_list& propList)
-    : impl_(runtime::make_context(runtime::impl_access::get_impl(dev), asyncHandler,
-                                  runtime::impl_access::get_impl(propList).get())) {}
+inline context::context(const device& dev, async_handler, const property_list&)
+    : impl_(runtime::make_context(runtime::impl_access::get_impl(dev))) {}
 
 inline context::context(const std::vector<device>& deviceList, const property_list& propList)
     : context(deviceList, async_handler(), propList) {}
 
-inline context::context(const std::vector<device>& deviceList, async_handler asyncHandler,
-                        const property_list& propList) {
-    std::vector<std::shared_ptr<runtime::device>> devs;
+inline context::context(const std::vector<device>& deviceList, async_handler,
+                        const property_list&) {
+    std::vector<runtime::device_ptr> devs;
 
     devs.reserve(deviceList.size());
     for (auto& d : deviceList) {
         devs.push_back(runtime::impl_access::get_impl(d));
     }
 
-    impl_ = runtime::make_context(devs, asyncHandler,
-                                  runtime::impl_access::get_impl(propList).get());
+    impl_ = runtime::make_context(devs);
 }
 
 inline backend context::get_backend() const noexcept {
@@ -46,7 +43,6 @@ inline std::vector<device> context::get_devices() const {
 }
 
 namespace detail {
-
 inline context get_default_context(platform plt) {
     return context(plt.get_devices());
 }

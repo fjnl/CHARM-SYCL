@@ -1,19 +1,17 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEST_CASE("platform", "[sycl][platform]") {
-    REQUIRE(sycl::platform::get_platforms().size() > 0);
+int main() {
+    "platform"_test = []() {
+        expect(sycl::platform::get_platforms().size() > 0_i);
 
-    sycl::platform p;
+        sycl::platform p;
 
-    SECTION("name") {
-        REQUIRE(p.get_info<sycl::info::platform::name>() != "");
-    }
+        expect(neq(p.get_info<sycl::info::platform::name>(), std::string("")));
 
-    SECTION("vendor") {
-        REQUIRE(p.get_info<sycl::info::platform::vendor>() != "");
-    }
+        expect(neq(p.get_info<sycl::info::platform::vendor>(), std::string("")));
 
-    SECTION("version") {
-        REQUIRE(p.get_info<sycl::info::platform::version>() != "");
-    }
+        expect(neq(p.get_info<sycl::info::platform::version>(), std::string("")));
+    };
+
+    return 0;
 }

@@ -1,10 +1,10 @@
 #include <array>
 #include <cassert>
 #include <cstring>
-#include <fmt/format.h>
-#include <utils/logging.hpp>
 #include "dev_rts.hpp"
 #include "fiber.hpp"
+#include "format.hpp"
+#include "logging.hpp"
 
 namespace {
 
@@ -32,6 +32,10 @@ using weak_event_ptr = event_node_impl::weak_event_ptr;
 
 struct event_impl final : event_base<event_node_impl> {
     using event_base::event_base;
+
+    auto get() const {
+        return ev_;
+    }
 };
 
 struct buffer_impl final : buffer_base {
@@ -53,12 +57,16 @@ struct task_impl : rts::task,
                    std::enable_shared_from_this<task_impl>,
                    private task_parameter_storage {
     task_impl() : ev_(event_node_impl::create()), wk_(ev_) {
-        DEBUG_FMT("task ctor: {}", fmt::ptr(this));
+        DEBUG_FMT("task ctor: {}", format::ptr(this));
     }
 
     void enable_profiling() override {
-        DEBUG_FMT("start: enable_profiling: task[{}]", fmt::ptr(this));
+        DEBUG_FMT("start: enable_profiling: task[{}]", format::ptr(this));
         ev_->enable_profiling();
+    }
+
+    void depends_on(rts::event const& ev) override {
+        static_cast<event_impl const&>(ev).get()->happens_before(ev_);
     }
 
     void depends_on(std::shared_ptr<rts::task> const& dep) override {
@@ -84,10 +92,11 @@ struct task_impl : rts::task,
         auto const dtoh =
             (ma != rts::memory_access::write_only) && !is_device_task_ && !dom.is_host();
 
+        (void)offset;
         DEBUG_FMT(
             "set_buffer_param(h_ptr={}, dom={}, ma={}, off=[{}, {}, {}], off_byte={}) htod={} "
             "dtoh={}",
-            fmt::ptr(h_ptr), dom.id(), static_cast<int>(ma), offset.size[0], offset.size[1],
+            format::ptr(h_ptr), dom.id(), static_cast<int>(ma), offset.size[0], offset.size[1],
             offset.size[2], offset_byte, htod, dtoh);
 
         if (htod) {
@@ -97,7 +106,8 @@ struct task_impl : rts::task,
                     prev();
                 }
 
-                DEBUG_FMT("memcpy({}, {}, {}) H-to-D", fmt::ptr(ptr), fmt::ptr(h_ptr), length);
+                DEBUG_FMT("memcpy({}, {}, {}) H-to-D", format::ptr(ptr), format::ptr(h_ptr),
+                          length);
 
                 std::memcpy(ptr, h_ptr, length);
             };
@@ -108,23 +118,15 @@ struct task_impl : rts::task,
                     prev();
                 }
 
-                DEBUG_FMT("memcpy({}, {}, {}) D-to-H", fmt::ptr(h_ptr), fmt::ptr(ptr), length);
+                DEBUG_FMT("memcpy({}, {}, {}) D-to-H", format::ptr(h_ptr), format::ptr(ptr),
+                          length);
 
                 std::memcpy(h_ptr, ptr, length);
             };
         }
 
         auto* ptr = next_param_ptr<void*>();
-        auto* acc = next_param_ptr<rts::accessor>();
-
         *ptr = dev_rts::advance_ptr(buf_.get(), offset_byte);
-
-        acc->size[0] = buf_.get_size().size[0];
-        acc->size[1] = buf_.get_size().size[1];
-        acc->size[2] = buf_.get_size().size[2];
-        acc->offset[0] = offset.size[0];
-        acc->offset[1] = offset.size[1];
-        acc->offset[2] = offset.size[2];
     }
 
     static inline void* get_ptr(rts::buffer& buf, size_t off_byte) {
@@ -137,8 +139,8 @@ struct task_impl : rts::task,
                 prev();
             }
 
-            DEBUG_FMT("copy_1d(src={}, dst={}, len_byte={})", fmt::ptr(src_ptr),
-                      fmt::ptr(dst_ptr), len_byte);
+            DEBUG_FMT("copy_1d(src={}, dst={}, len_byte={})", format::ptr(src_ptr),
+                      format::ptr(dst_ptr), len_byte);
 
             std::memcpy(dst_ptr, src_ptr, len_byte);
         };
@@ -168,7 +170,8 @@ struct task_impl : rts::task,
 
             DEBUG_FMT(
                 "copy_2d(src={}, dst={}, loop={}, src_stride={}, dst_stride={}, len_byte={})",
-                fmt::ptr(src_ptr), fmt::ptr(dst_ptr), loop, src_stride, dst_stride, len_byte);
+                format::ptr(src_ptr), format::ptr(dst_ptr), loop, src_stride, dst_stride,
+                len_byte);
 
             for (size_t i = 0; i < loop; i++) {
                 std::memcpy(dst_ptr, src_ptr, len_byte);
@@ -208,7 +211,7 @@ struct task_impl : rts::task,
             DEBUG_FMT(
                 "copy_3d(src={}, dst={}, loop=[{}, {}], src_stride=[{}, {}], dst_stride=[{}, "
                 "{}], len_byte={})",
-                fmt::ptr(src_ptr), fmt::ptr(dst_ptr), i_loop, j_loop, i_src_stride,
+                format::ptr(src_ptr), format::ptr(dst_ptr), i_loop, j_loop, i_src_stride,
                 j_src_stride, i_dst_stride, j_dst_stride, len_byte);
 
             for (size_t i = 0; i < i_loop; i++) {
@@ -250,54 +253,60 @@ struct task_impl : rts::task,
                      j_dst_stride, i_loop, j_loop, len_byte);
     }
 
+    void fill(rts::buffer& dst, size_t byte_len) override {
+        pre_ = [ptr = get_ptr(dst, 0), byte_len, prev = std::move(pre_)]() {
+            if (prev) {
+                prev();
+            }
+            memset(ptr, 0x00, byte_len);
+        };
+    }
+
     void set_kernel(char const* name, uint32_t hash) override {
         auto& reg = kreg::get();
 
-        if (auto* fn = reg.find(name, hash, "cpu-openmp", kreg::fnv1a("cpu-openmp"))) {
-            fn_ = reinterpret_cast<dev_fn_ptr_t>(fn);
-        } else if (auto* fn = reg.find(name, hash, "cpu-c", kreg::fnv1a("cpu-c"))) {
-            fn_ = reinterpret_cast<dev_fn_ptr_t>(fn);
+        if (auto const* info = reg.find(name, hash, "cpu-openmp", kreg::fnv1a("cpu-openmp"))) {
+            fn_ = reinterpret_cast<dev_fn_ptr_t>(info->fn);
+        } else if (auto const* info = reg.find(name, hash, "cpu-c", kreg::fnv1a("cpu-c"))) {
+            fn_ = reinterpret_cast<dev_fn_ptr_t>(info->fn);
         } else {
-            auto errmsg = fmt::format("Kernel not found: {}", name);
+            auto errmsg = format::format("Kernel not found: {}", name);
             throw std::runtime_error(errmsg);
         }
     }
 
+    void set_desc(rts::func_desc const* desc) override {
+        desc_ = desc;
+    }
+
     void set_single() override {
         DEBUG_LOG("set_single()");
-        *next_param_ptr<size_t>() = 1;
-        *next_param_ptr<size_t>() = 1;
-        *next_param_ptr<size_t>() = 1;
+
+        par_[0] = 1;
+        par_[1] = 1;
+        par_[2] = 1;
     }
 
     void set_range(rts::range const& r) override {
         DEBUG_FMT("set_range({}, {}, {})", r.size[0], r.size[1], r.size[2]);
-        *next_param_ptr<size_t>() = r.size[0];
-        *next_param_ptr<size_t>() = r.size[1];
-        *next_param_ptr<size_t>() = r.size[2];
-    }
 
-    void set_range(rts::range const& r, rts::id const& offset) override {
-        DEBUG_FMT("set_range(r=[{}, {}, {}], o=[{}, {}, {}])", r.size[0], r.size[1], r.size[2],
-                  offset.size[0], offset.size[1], offset.size[2]);
-        *next_param_ptr<size_t>() = r.size[0];
-        *next_param_ptr<size_t>() = r.size[1];
-        *next_param_ptr<size_t>() = r.size[2];
-        *next_param_ptr<size_t>() = offset.size[0];
-        *next_param_ptr<size_t>() = offset.size[1];
-        *next_param_ptr<size_t>() = offset.size[2];
+        par_[0] = r.size[0];
+        par_[1] = r.size[1];
+        par_[2] = r.size[2];
     }
 
     void set_nd_range(rts::nd_range const& ndr) override {
         DEBUG_FMT("set_nd_range({}, {}, {}, {}, {}, {})", ndr.global[0] / ndr.local[0],
                   ndr.global[1] / ndr.local[1], ndr.global[2] / ndr.local[2], ndr.local[0],
                   ndr.local[1], ndr.local[2]);
-        *next_param_ptr<size_t>() = ndr.global[0] / ndr.local[0];
-        *next_param_ptr<size_t>() = ndr.global[1] / ndr.local[1];
-        *next_param_ptr<size_t>() = ndr.global[2] / ndr.local[2];
-        *next_param_ptr<size_t>() = ndr.local[0];
-        *next_param_ptr<size_t>() = ndr.local[1];
-        *next_param_ptr<size_t>() = ndr.local[2];
+
+        par_[0] = ndr.global[0] / ndr.local[0];
+        par_[1] = ndr.global[1] / ndr.local[1];
+        par_[2] = ndr.global[2] / ndr.local[2];
+        par_[3] = ndr.local[0];
+        par_[4] = ndr.local[1];
+        par_[5] = ndr.local[2];
+        is_ndr_ = true;
     }
 
     void set_local_mem_size(size_t byte) override {
@@ -305,7 +314,7 @@ struct task_impl : rts::task,
 
         lmem_ = byte;
 
-        *next_param_ptr<unsigned int*>() = &lmem_;
+        // *next_param_ptr<unsigned int*>() = &lmem_;
     }
 
     void use_device() override {
@@ -325,7 +334,9 @@ struct task_impl : rts::task,
     }
 
     std::unique_ptr<rts::event> submit() override {
-        if (!is_device_task_) {
+        if (desc_) {
+            prep_desc();
+        } else if (!is_device_task_) {
             prep_host();
         } else {
             prep_device();
@@ -337,7 +348,7 @@ private:
     std::unique_ptr<rts::event> submit_() {
         if (pre_ || body_) {
             ev_->set_fn([task = shared_from_this()](event_ptr const& ev) mutable {
-                DEBUG_FMT("start: task [{}]", fmt::ptr(task.get()));
+                DEBUG_FMT("start: task [{}]", format::ptr(task.get()));
 
                 if (task->pre_) {
                     task->pre_();
@@ -346,7 +357,7 @@ private:
                     task->body_();
                 }
 
-                DEBUG_FMT("end:   task [{}]", fmt::ptr(task.get()));
+                DEBUG_FMT("end:   task [{}]", format::ptr(task.get()));
 
                 ev->complete();
             });
@@ -359,11 +370,17 @@ private:
     void prep_device() {
         if (fn_) {
             body_ = [this]() {
-                DEBUG_FMT("start: kernel function [{}]", fmt::ptr(this));
+                DEBUG_FMT("start: kernel function [{}]", format::ptr(this));
 
-                this->fn_(this->args_.data());
+                if (is_ndr_) {
+                    sycl::runtime::impl::exec_with_fibers(par_[0], par_[1], par_[2], par_[3],
+                                                          par_[4], par_[5], lmem_, fn_,
+                                                          args_.data());
+                } else {
+                    this->fn_(this->args_.data());
+                }
 
-                DEBUG_FMT("end:   kernel function [{}]", fmt::ptr(this));
+                DEBUG_FMT("end:   kernel function [{}]", format::ptr(this));
             };
         }
     }
@@ -371,11 +388,23 @@ private:
     void prep_host() {
         if (host_fn_) {
             body_ = [this]() {
-                DEBUG_FMT("start: host function [{}]", fmt::ptr(this));
+                DEBUG_FMT("start: host function [{}]", format::ptr(this));
 
                 this->host_fn_();
 
-                DEBUG_FMT("end:   host function [{}]", fmt::ptr(this));
+                DEBUG_FMT("end:   host function [{}]", format::ptr(this));
+            };
+        }
+    }
+
+    void prep_desc() {
+        if (desc_) {
+            body_ = [this]() {
+                DEBUG_FMT("start: kernel descriptor {} [{}]", desc_->name, format::ptr(this));
+
+                desc_->cpu(this->args_.data());
+
+                DEBUG_FMT("end:   kernel descriptor {} [{}]", desc_->name, format::ptr(this));
             };
         }
     }
@@ -388,16 +417,21 @@ private:
     std::function<void()> host_fn_;
     std::function<void()> pre_;
     std::function<void()> body_;
+    std::array<size_t, 6> par_;
     event_ptr ev_;
     weak_event_ptr wk_;
     unsigned int lmem_ = 0;
+    bool is_ndr_ = false;
+    rts::func_desc const* desc_ = nullptr;
 };
 
 struct subsystem_impl final : subsystem_base<platform_impl, buffer_impl> {
     subsystem_impl() {
         init_logging();
 
-        q_task.reset(new BS::thread_pool_light(1));
+        q_task.reset(new BS::thread_pool(1));
+
+        DEBUG_LOG("initialized");
     }
 
     std::shared_ptr<rts::task> new_task() override {
@@ -405,7 +439,7 @@ struct subsystem_impl final : subsystem_base<platform_impl, buffer_impl> {
     }
 
     void shutdown() override {
-        q_task->wait_for_tasks();
+        q_task->wait();
     }
 };
 
@@ -417,7 +451,7 @@ namespace runtime::impl {
 
 std::unique_ptr<rts::subsystem> make_dev_rts() {
     init_logging();
-    utils::logging::timer_reset();
+    logging::timer_reset();
     dev_rts::init_time_point();
     fiber_init();
     return std::make_unique<subsystem_impl>();

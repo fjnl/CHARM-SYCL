@@ -1,24 +1,45 @@
-#include <clang-sycl.hpp>
-#include <clang/Tooling/CommonOptionsParser.h>
-#include <clang/Tooling/Tooling.h>
+#include <fstream>
+#include "ast_visitor.hpp"
 #include "transform.hpp"
 
-namespace {
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
 
-static llvm::cl::OptionCategory options("CHARM Options");
+#include <clang/Tooling/CommonOptionsParser.h>
+#include <clang/Tooling/Tooling.h>
 
-static llvm::cl::opt<std::string> optOutput("output", llvm::cl::desc("Output file name"),
-                                            llvm::cl::value_desc("FILE"), llvm::cl::init("-"),
-                                            llvm::cl::cat(options));
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
 
-struct OptionsParser : clang::tooling::CommonOptionsParser {
-    OptionsParser(int& argc, const char** argv) : CommonOptionsParser(argc, argv, options) {}
-};
+#ifdef IMPLEMENT_MAIN
+int main(int argc, char** argv)
+#else
+int kext_main(int argc, char** argv)
+#endif
+{
+    llvm::cl::OptionCategory options("CHARM Options");
 
-}  // namespace
+    llvm::cl::opt<std::string> optOutput("output", llvm::cl::desc("Output file name"),
+                                         llvm::cl::value_desc("FILE"), llvm::cl::init("-"),
+                                         llvm::cl::cat(options));
+    llvm::cl::opt<std::string> optDesc("desc", llvm::cl::desc("Kernel descriptors file name"),
+                                       llvm::cl::value_desc("FILE"), llvm::cl::init("-"),
+                                       llvm::cl::cat(options));
 
-int main(int argc, const char** argv) {
-    auto op = clang::tooling::CommonOptionsParser::create(argc, argv, options);
+    auto op = clang::tooling::CommonOptionsParser::create(argc, const_cast<const char**>(argv),
+                                                          options);
     if (auto err = op.takeError()) {
         llvm::errs() << err << "\n";
         return 1;
@@ -35,15 +56,19 @@ int main(int argc, const char** argv) {
         }
     }
 
-    auto action = clsy::ast_consume_frontend_action([&](clang::ASTContext& ctx) {
-        clsy::visit_kernel_functions(
-            ctx, [&](llvm::StringRef name, clang::CXXMemberCallExpr* call, clang::Expr* range,
-                     clang::Expr const* offset, clang::Expr* fn) {
-                Transform(name, ctx, range, offset, fn);
-            });
+    std::ofstream desc(optDesc);
+
+    auto action = ast_consume_frontend_action([&](clang::ASTContext& ctx) {
+        visit_kernel_functions(
+            ctx,
+            [&](llvm::StringRef name, clang::CXXMemberCallExpr*, clang::Expr* range,
+                clang::Expr const* offset, clang::Expr* fn) {
+                Transform(name, ctx, range, offset, fn, desc);
+            },
+            false);
     });
 
-    auto status = clsy::run_action(op.get(), std::move(action));
+    auto status = run_action(op.get(), std::move(action));
 
     if (status == 0) {
         TransformSave(os ? *os : llvm::outs());

@@ -21,9 +21,8 @@ buffer<T, Dimensions, AllocatorT>::buffer(T* hostData, const range<Dimensions>& 
 template <class T, int Dimensions, class AllocatorT>
 buffer<T, Dimensions, AllocatorT>::buffer(T* hostData, const range<Dimensions>& bufferRange,
                                           [[maybe_unused]] AllocatorT allocator,
-                                          const property_list& propList)
-    : impl_(runtime::make_buffer(hostData, nullptr, sizeof(T), detail::extend(bufferRange),
-                                 runtime::impl_access::get_impl(propList).get())) {
+                                          const property_list&)
+    : impl_(runtime::make_buffer(hostData, sizeof(T), detail::extend(bufferRange))) {
     if (hostData) {
         set_final_data(hostData);
     }
@@ -39,19 +38,17 @@ template <class T, int Dimensions, class AllocatorT>
 buffer<T, Dimensions, AllocatorT>::buffer(const T* hostData,
                                           const range<Dimensions>& bufferRange,
                                           [[maybe_unused]] AllocatorT allocator,
-                                          const property_list& propList)
-    : impl_(runtime::make_buffer(const_cast<T*>(hostData), nullptr, sizeof(T),
-                                 detail::extend(bufferRange),
-                                 runtime::impl_access::get_impl(propList).get())) {}
+                                          const property_list&)
+    : impl_(runtime::make_buffer(const_cast<T*>(hostData), sizeof(T),
+                                 detail::extend(bufferRange))) {}
 
 template <class T, int Dimensions, class AllocatorT>
 buffer<T, Dimensions, AllocatorT>::buffer(const std::shared_ptr<T>& hostData,
                                           const range<Dimensions>& bufferRange,
                                           [[maybe_unused]] AllocatorT allocator,
-                                          const property_list& propList)
-    : impl_(runtime::make_buffer(hostData.get(), hostData, sizeof(T),
-                                 detail::extend(bufferRange),
-                                 runtime::impl_access::get_impl(propList).get())) {
+                                          const property_list&)
+    : impl_(runtime::make_buffer(hostData.get(), sizeof(T), detail::extend(bufferRange))),
+      sp_(hostData) {
     set_final_data(hostData.get());
 }
 
@@ -65,10 +62,9 @@ template <class T, int Dimensions, class AllocatorT>
 buffer<T, Dimensions, AllocatorT>::buffer(const std::shared_ptr<T[]>& hostData,
                                           const range<Dimensions>& bufferRange,
                                           [[maybe_unused]] AllocatorT allocator,
-                                          const property_list& propList)
-    : impl_(runtime::make_buffer(hostData.get(), hostData, sizeof(T),
-                                 detail::extend(bufferRange),
-                                 runtime::impl_access::get_impl(propList).get())) {
+                                          const property_list&)
+    : impl_(runtime::make_buffer(hostData.get(), sizeof(T), detail::extend(bufferRange))),
+      sp_(hostData) {
     set_final_data(hostData.get());
 }
 
@@ -81,7 +77,9 @@ buffer<T, Dimensions, AllocatorT>::buffer(const std::shared_ptr<T[]>& hostData,
 template <class T, int Dimensions, class AllocatorT>
 buffer<T, Dimensions, AllocatorT>::~buffer() {
     if (impl_) {
-        impl_->write_back();
+        if (auto owned = std::move(impl_).try_into_owned()) {
+            owned->write_back();
+        }
     }
 }
 

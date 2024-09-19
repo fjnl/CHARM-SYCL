@@ -1,0 +1,22 @@
+<interface name="rocsolver_interface_40200000">
+    <include>complex</include>
+    <include>hip/hip_interface.hpp</include>
+    <include>blas/common.hpp</include>
+    <include quote="1">rocblas_interface.hpp</include>
+
+    <type name="BLAS" type="rocblas_interface_40200000" />
+    <type name="HIP" type="typename BLAS::HIP" />
+    <type name="handle_t" type="BLAS::handle_t" />
+    <type name="result_t" type="BLAS::result_t" />
+    <type name="stream_t" type="typename HIP::stream_t" />
+    <type name="uplo_t" type="BLAS::uplo_t" />
+
+    <function return="result_t" name="rocsolver_get_version_string" realname="rocsolver_get_version_string">
+        <param type="char*" />
+        <param type="size_t" />
+    </function>
+
+    <function return="result_t" name="rocsolver_get_version_string_size" realname="rocsolver_get_version_string_size">
+        <param type="size_t*" />
+    </function>
+</interface>

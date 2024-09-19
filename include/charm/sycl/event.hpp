@@ -32,7 +32,7 @@ struct event {
 private:
     friend struct runtime::impl_access;
 
-    inline explicit event(std::shared_ptr<runtime::event> const& impl) : impl_(impl) {}
+    inline explicit event(runtime::event_ptr const& impl) : impl_(impl) {}
 
     inline info::event_profiling::command_submit::return_type get_profiling_info(
         info::event_profiling::command_submit) const;
@@ -43,7 +43,7 @@ private:
     inline info::event_profiling::command_end::return_type get_profiling_info(
         info::event_profiling::command_end) const;
 
-    std::shared_ptr<runtime::event> impl_;
+    runtime::event_ptr impl_;
 };
 
 CHARM_SYCL_END_NAMESPACE

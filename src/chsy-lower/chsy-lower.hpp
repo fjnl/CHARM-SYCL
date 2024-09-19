@@ -11,6 +11,8 @@ xcml::xcml_program_node_ptr optimize_compounds(xcml::xcml_program_node_ptr const
 xcml::xcml_program_node_ptr optimize_casts(xcml::xcml_program_node_ptr const&);
 xcml::xcml_program_node_ptr inline_functions(xcml::xcml_program_node_ptr const&);
 xcml::xcml_program_node_ptr inline_functions_mandatory(xcml::xcml_program_node_ptr const&);
+xcml::xcml_program_node_ptr array_as_vec(xcml::xcml_program_node_ptr);
+xcml::xcml_program_node_ptr ext_vector_type(xcml::xcml_program_node_ptr);
 
 xcml::xcml_program_node_ptr lower_cpu_c(xcml::xcml_program_node_ptr const&);
 xcml::xcml_program_node_ptr lower_cpu_openmp(xcml::xcml_program_node_ptr const&);
@@ -24,22 +26,6 @@ xcml::xcml_program_node_ptr apply_visitors(xcml::xcml_program_node_ptr const& no
         return v(node);
     } else {
         return apply_visitors(v(node), std::forward<Vs>(vs)...);
-    }
-}
-
-inline bool is_parallel(xcml::kernel_wrapper_decl_ptr const& node) {
-    return !!xcml::parallel_invoke::dyncast(node->body);
-}
-
-inline bool is_ndr(xcml::kernel_wrapper_decl_ptr const& node) {
-    return !!xcml::ndr_invoke::dyncast(node->body);
-}
-
-inline size_t get_ndim(xcml::kernel_wrapper_decl_ptr const& node) {
-    if (auto par = xcml::parallel_invoke::dyncast(node->body)) {
-        return par->dimensions.size();
-    } else {
-        return xcml::ndr_invoke::dyncast(node->body)->group.size();
     }
 }
 
@@ -70,3 +56,18 @@ xcml::xcml_program_node_ptr apply_visitor(std::unique_ptr<T> vis,
                                           xcml::xcml_program_node_ptr const& prg) {
     return (*vis)(prg);
 }
+
+struct vec_t {
+    char const* sig;
+    char const* scal;
+    int veclen;
+};
+
+#define VEC(ty, len)           \
+    vec_t {                    \
+        "v" #len #ty, #ty, len \
+    }
+
+#define FLOAT_VECS_(ty) VEC(ty, 1), VEC(ty, 2), VEC(ty, 3), VEC(ty, 4), VEC(ty, 8), VEC(ty, 16)
+
+inline const vec_t FLOAT_VECS[] = {FLOAT_VECS_(f), FLOAT_VECS_(d)};

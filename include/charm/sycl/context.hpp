@@ -34,9 +34,9 @@ struct context {
 private:
     friend struct runtime::impl_access;
 
-    explicit context(std::shared_ptr<runtime::context> const& impl) : impl_(impl) {}
+    explicit context(runtime::context_ptr const& impl) : impl_(impl) {}
 
-    std::shared_ptr<runtime::context> impl_;
+    runtime::context_ptr impl_;
 };
 
 namespace detail {

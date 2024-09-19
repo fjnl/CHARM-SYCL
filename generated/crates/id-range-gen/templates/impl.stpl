@@ -1,0 +1,169 @@
+#pragma once
+
+#include <charm/sycl.hpp>
+
+CHARM_SYCL_BEGIN_NAMESPACE
+
+<% if dim == 1 { %>
+<% if self.is_id() { %>
+    <%- self.name() %><<%- dim %>>::<%- self.name() %>() : <%- self.name() %>(0) {}
+<% } %>
+
+<%- self.name() %><<%- dim %>>::<%- self.name() %>(size_t dim0) {
+<% for d in 0..dim { %>
+    (*this)[<%- d %>] = dim<%- d %>;
+<% } %>
+}
+<% } else if dim == 2 { %>
+<% if self.is_id() { %>
+    <%- self.name() %><<%- dim %>>::<%- self.name() %>() : <%- self.name() %>(0, 0) {}
+<% } %>
+
+<%- self.name() %><<%- dim %>>::<%- self.name() %>(size_t dim0, size_t dim1) {
+<% for d in 0..dim { %>
+    (*this)[<%- d %>] = dim<%- d %>;
+<% } %>
+}
+<% } else { %>
+<% if self.is_id() { %>
+    <%- self.name() %><<%- dim %>>::<%- self.name() %>() : <%- self.name() %>(0, 0, 0) {}
+<% } %>
+
+<%- self.name() %><<%- dim %>>::<%- self.name() %>(size_t dim0, size_t dim1, size_t dim2) {
+    <% for d in 0..dim { %>
+        (*this)[<%- d %>] = dim<%- d %>;
+    <% } %>
+}
+<% } %>
+
+<% if self.is_id() { %>
+    <%- self.name() %><<%- dim %>>::<%- self.name() %>(range<<%- dim %>> const& r) {
+        <% for d in 0..dim { %>
+            (*this)[<%- d %>] = r[<%- d %>];
+        <% } %>
+    }
+
+    <%- self.name() %><<%- dim %>>::<%- self.name() %>(item<<%- dim %>> const& i) {
+        <% for d in 0..dim { %>
+            (*this)[<%- d %>] = i[<%- d %>];
+        <% } %>
+    }
+<% } %>
+
+<% if self.is_id() && dim == 1 { %>
+<%- self.name() %><<%- dim %>>::operator size_t() const {
+    return (*this)[0];
+}
+<% } %>
+
+size_t <%- self.name() %><<%- dim %>>::size() const {
+<% for d in 0..dim { %>
+    <%- a_or_b(d, "return", "*") %>(*this)[<%- d %>]
+<% } %>
+    ;
+}
+
+size_t <%- self.name() %><<%- dim %>>::get(size_t dimension) const {
+    return (*this)[dimension];
+}
+
+size_t& <%- self.name() %><<%- dim %>>::operator[](size_t dimension) {
+    return <%- self.name() %>_[dimension];
+}
+
+size_t const& <%- self.name() %><<%- dim %>>::operator[](size_t dimension) const {
+    return <%- self.name() %>_[dimension];
+}
+
+<% for op in ops { %>
+    <% if op.is_rel() { %>
+        inline CHARM_SYCL_INLINE bool operator<%- op.str %>(
+            <%- self.name() %><<%- dim %>> const& lhs,
+            <%- self.name() %><<%- dim %>> const& rhs
+        ) {
+            return lhs[0] <%- op.str %> rhs[0]
+            <% if dim > 1 { %>
+                && lhs[1] <%- op.str %> rhs[1]
+            <% } %>
+            <% if dim > 2 { %>
+                && lhs[2] <%- op.str %> rhs[2]
+            <% } %>
+            ;
+        }
+    <% } else if op.is_bin() { %>
+        inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+            <%- self.name() %><<%- dim %>> const& lhs,
+            <%- self.name() %><<%- dim %>> const& rhs
+        ) {
+            return <%- self.name() %><<%- dim %>>(
+                lhs[0] <%- op.str %> rhs[0]
+            <% if dim > 1 { %>
+                , lhs[1] <%- op.str %> rhs[1]
+            <% } %>
+            <% if dim > 2 { %>
+                , lhs[2] <%- op.str %> rhs[2]
+            <% } %>
+            );
+        }
+
+        inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+            size_t lhs,
+            <%- self.name() %><<%- dim %>> const& rhs
+        ) {
+            return <%- self.name() %><<%- dim %>>(
+                lhs <%- op.str %> rhs[0]
+            <% if dim > 1 { %>
+                , lhs <%- op.str %> rhs[1]
+            <% } %>
+            <% if dim > 2 { %>
+                , lhs <%- op.str %> rhs[2]
+            <% } %>
+            );
+        }
+
+        inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+            <%- self.name() %><<%- dim %>> const& lhs,
+            size_t rhs
+        ) {
+            return <%- self.name() %><<%- dim %>>(
+                lhs[0] <%- op.str %> rhs
+            <% if dim > 1 { %>
+                , lhs[1] <%- op.str %> rhs
+            <% } %>
+            <% if dim > 2 { %>
+                , lhs[2] <%- op.str %> rhs
+            <% } %>
+            );
+        }
+    <% } else if op.is_compound() { %>
+        inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>>& operator<%- op.str %>(
+            <%- self.name() %><<%- dim %>>& lhs,
+            <%- self.name() %><<%- dim %>> const& rhs
+        ) {
+            lhs[0] <%- op.str %> rhs[0];
+            <% if dim > 1 { %>
+                lhs[1] <%- op.str %> rhs[1];
+            <% } %>
+            <% if dim > 2 { %>
+                lhs[2] <%- op.str %> rhs[2];
+            <% } %>
+            return lhs;
+        }
+
+        inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>>& operator<%- op.str %>(
+            <%- self.name() %><<%- dim %>>& lhs,
+            size_t rhs
+        ) {
+            lhs[0] <%- op.str %> rhs;
+            <% if dim > 1 { %>
+                lhs[1] <%- op.str %> rhs;
+            <% } %>
+            <% if dim > 2 { %>
+                lhs[2] <%- op.str %> rhs;
+            <% } %>
+            return lhs;
+        }
+    <% } %>
+<% } %>
+
+CHARM_SYCL_END_NAMESPACE

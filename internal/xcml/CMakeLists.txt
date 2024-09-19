@@ -1,6 +1,10 @@
-add_executable(xcml_types_gen xcml_types_gen.cpp spec.cpp)
-target_link_libraries(xcml_types_gen PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_types_gen PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+override_linker_command()
+add_library(xcml-specs OBJECT spec.cpp xml_spec.cpp)
+target_link_libraries(xcml-specs PRIVATE fmt::fmt)
+target_include_directories(xcml-specs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+
+add_executable(xcml_types_gen xcml_types_gen.cpp)
+target_link_libraries(xcml_types_gen PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_type.hpp"
@@ -9,9 +13,8 @@ add_custom_command(
     DEPENDS xcml_types_gen
 )
 
-add_executable(xcml_types_fwd_gen xcml_types_fwd_gen.cpp spec.cpp)
-target_link_libraries(xcml_types_fwd_gen PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_types_fwd_gen PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+add_executable(xcml_types_fwd_gen xcml_types_fwd_gen.cpp)
+target_link_libraries(xcml_types_fwd_gen PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_type_fwd.hpp"
@@ -20,9 +23,8 @@ add_custom_command(
     DEPENDS xcml_types_fwd_gen
 )
 
-add_executable(xcml_to_xml_gen_cpp xcml_to_xml_gen_cpp.cpp spec.cpp xml_spec.cpp)
-target_link_libraries(xcml_to_xml_gen_cpp PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_to_xml_gen_cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+add_executable(xcml_to_xml_gen_cpp xcml_to_xml_gen_cpp.cpp)
+target_link_libraries(xcml_to_xml_gen_cpp PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_to_xml.cpp"
@@ -31,9 +33,8 @@ add_custom_command(
     DEPENDS xcml_to_xml_gen_cpp
 )
 
-add_executable(xcml_from_xml_gen_cpp xcml_from_xml_gen_cpp.cpp spec.cpp xml_spec.cpp)
-target_link_libraries(xcml_from_xml_gen_cpp PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_from_xml_gen_cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+add_executable(xcml_from_xml_gen_cpp xcml_from_xml_gen_cpp.cpp)
+target_link_libraries(xcml_from_xml_gen_cpp PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_from_xml.cpp"
@@ -42,9 +43,8 @@ add_custom_command(
     DEPENDS xcml_from_xml_gen_cpp
 )
 
-add_executable(xcml_visitor_gen xcml_visitor_gen.cpp spec.cpp)
-target_link_libraries(xcml_visitor_gen PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_visitor_gen PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+add_executable(xcml_visitor_gen xcml_visitor_gen.cpp)
+target_link_libraries(xcml_visitor_gen PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_visitor.hpp"
@@ -53,9 +53,8 @@ add_custom_command(
     DEPENDS xcml_visitor_gen
 )
 
-add_executable(xcml_func_gen xcml_func_gen.cpp spec.cpp)
-target_link_libraries(xcml_func_gen PRIVATE fmt::fmt Threads::Threads)
-target_include_directories(xcml_func_gen PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/cpp-peglib)
+add_executable(xcml_func_gen xcml_func_gen.cpp)
+target_link_libraries(xcml_func_gen PRIVATE fmt::fmt Threads::Threads xcml-specs)
 
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/xcml_func.hpp"

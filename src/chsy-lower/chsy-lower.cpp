@@ -11,7 +11,12 @@ int run_transformation(std::string const& output, F const& fn,
     return 0;
 }
 
-int main(int argc, char** argv) {
+#ifdef IMPLEMENT_MAIN
+int main(int argc, char** argv)
+#else
+int lower_main(int argc, char** argv)
+#endif
+{
     cxxopts::Options options(argv[0]);
     options.add_options()("input", "input file",
                           cxxopts::value<std::string>()->default_value("-"));

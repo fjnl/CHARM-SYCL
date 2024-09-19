@@ -5,20 +5,24 @@
 #include <stdexcept>
 #include <system_error>
 #include <assert.h>
-#include <fmt/format.h>
-#include <iris/iris.h>
+#include <iris/iris_interface.hpp>
 #include <unistd.h>
-#include <utils/logging.hpp>
 #include "../fiber.hpp"
+#include "../format.hpp"
+#include "../interfaces.hpp"
 #include "../kreg.hpp"
+#include "../logging.hpp"
 #include "../rts.hpp"
 
 namespace {
 
 LOGGING_DEFINE_SCOPE(iris)
 
-bool USE_IRIS_ALL = false;
-bool USE_IRIS_ANY = false;
+bool USE_IRIS_DEPEND = false;
+bool USE_IRIS_DATA = false;
+bool USE_IRIS_RANDOM = false;
+bool USE_IRIS_FTF = false;
+bool USE_IRIS_SDQ = false;
 bool USE_IRIS_ROUNDROBIN = false;
 bool USE_IRIS_CPU = false;
 bool USE_IRIS_GPU = false;
@@ -28,7 +32,7 @@ namespace rts = CHARM_SYCL_NS::rts;
 [[noreturn]] void throw_errno_impl(char const* errmsg, int errno_,
                                    char const* file = __builtin_FILE(),
                                    int line = __builtin_LINE()) {
-    auto const what = fmt::format("Errot at {}:{}: {}", file, line, errmsg);
+    auto const what = format::format("Errot at {}:{}: {}", file, line, errmsg);
     throw std::system_error(std::error_code(errno_, std::generic_category()), what);
 }
 
@@ -53,6 +57,7 @@ struct memory_domain_impl : rts::memory_domain {
 
 static memory_domain_impl iris_dom;
 
+template <class IRIS>
 struct device_impl : rts::device {
     explicit device_impl(int policy) : policy_(policy) {
         init();
@@ -67,19 +72,19 @@ struct device_impl : rts::device {
     device_impl& operator=(device_impl&&) = delete;
 
     bool is_cpu() const override {
-        return types_ & iris_cpu;
+        return types_ & IRIS::cpu;
     }
 
     bool is_gpu() const override {
-        return types_ & iris_gpu;
+        return types_ & IRIS::gpu;
     }
 
     bool is_accelerator() const override {
-        return types_ & (iris_gpu | iris_fpga);
+        return types_ & (IRIS::gpu | IRIS::fpga);
     }
 
     bool is_fpga() const override {
-        return types_ & iris_fpga;
+        return types_ & IRIS::fpga;
     }
 
     bool is_custom() const override {
@@ -98,37 +103,51 @@ struct device_impl : rts::device {
         char info[256];
         std::string type = "IRIS Unknown Device";
         size_t size;
-        iris_device_info(0, iris_name, &info, &size);
+        IRIS::iris_device_info(0, IRIS::name, &info, &size);
         switch (policy_) {
-            case iris_cpu:
+            case IRIS::cpu:
                 type = "IRIS CPU Device";
                 break;
-            case iris_gpu:
+            case IRIS::gpu:
                 type = "IRIS GPU Device";
                 break;
-            case iris_fpga:
+            case IRIS::fpga:
                 type = "IRIS FPGA Device";
                 break;
-            case iris_any:
-                type = "IRIS Any Device";
+            case IRIS::sdq:
+                type = "IRIS Shortest Device Queue";
                 break;
-            case iris_all:
-                type = "IRIS All Device";
+            case IRIS::ftf:
+                type = "IRIS Device First-to-Finish";
                 break;
-            case iris_roundrobin:
+            case IRIS::depend:
+                type = "IRIS Device Depend";
+                break;
+            case IRIS::data:
+                type = "IRIS Device Data";
+                break;
+            case IRIS::random:
+                type = "IRIS Device Random";
+                break;
+            case IRIS::roundrobin:
                 type = "IRIS Roundrobin Device";
                 break;
             default:
                 type = "IRIS Unknown Device";
                 break;
         }
+
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
         return std::string(info) + " (" + type + ")";
+#else
+        return std::string(info) + " (" + type + ") [+dmem]";
+#endif
     }
 
     std::string info_vendor() const override {
         char vendor[256];
         size_t size;
-        iris_device_info(0, iris_vendor, vendor, &size);
+        IRIS::iris_device_info(0, IRIS::vendor, vendor, &size);
         return std::string(vendor);
     }
 
@@ -146,19 +165,20 @@ struct device_impl : rts::device {
 
 private:
     static bool is_wildcard(int type) {
-        return type & (iris_any | iris_all | iris_roundrobin);
+        return type & (IRIS::sdq | IRIS::ftf | IRIS::depend | IRIS::roundrobin | IRIS::random |
+                       IRIS::data);
     }
 
     void init() {
         int n = 0;
-        if (iris_device_count(&n) != IRIS_SUCCESS) {
+        if (IRIS::iris_device_count(&n) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_device_count() failed");
         }
 
         for (int i = 0; i < n; i++) {
             int type = -1;
 
-            if (iris_device_info(i, iris_type, &type, nullptr) != IRIS_SUCCESS) {
+            if (IRIS::iris_device_info(i, IRIS::type, &type, nullptr) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_device_info() failed");
             }
             types_ |= type;
@@ -174,36 +194,46 @@ private:
     unsigned int types_ = 0;
 };
 
+template <class IRIS>
 struct platform_impl : rts::platform {
     platform_impl() {
         check_env();
 
         std::vector<unsigned int> policies;
 
-        if (USE_IRIS_ALL) {
-            policies.push_back(iris_all);
+        if (USE_IRIS_FTF) {
+            policies.push_back(IRIS::ftf);
         }
-        if (USE_IRIS_ANY) {
-            policies.push_back(iris_any);
+        if (USE_IRIS_SDQ) {
+            policies.push_back(IRIS::sdq);
+        }
+        if (USE_IRIS_DEPEND) {
+            policies.push_back(IRIS::depend);
+        }
+        if (USE_IRIS_DATA) {
+            policies.push_back(IRIS::data);
+        }
+        if (USE_IRIS_RANDOM) {
+            policies.push_back(IRIS::random);
         }
         if (USE_IRIS_ROUNDROBIN) {
-            policies.push_back(iris_roundrobin);
+            policies.push_back(IRIS::roundrobin);
         }
         if (USE_IRIS_GPU) {
-            policies.push_back(iris_gpu);
+            policies.push_back(IRIS::gpu);
         }
         if (USE_IRIS_CPU) {
-            policies.push_back(iris_cpu);
+            policies.push_back(IRIS::cpu);
         }
 
         if (policies.empty()) {
-            policies.push_back(iris_gpu);
-            policies.push_back(iris_cpu);
+            policies.push_back(IRIS::gpu);
+            policies.push_back(IRIS::cpu);
             // policies.push_back(iris_fpga);
         }
 
         for (auto const& policy : policies) {
-            if (auto d = std::make_shared<device_impl>(policy); d->available()) {
+            if (auto d = std::make_shared<device_impl<IRIS>>(policy); d->available()) {
                 devs_.push_back(d);
             }
         }
@@ -224,7 +254,7 @@ struct platform_impl : rts::platform {
     std::string info_name() const override {
         char name[256];
         size_t size;
-        iris_platform_info(0, iris_name, name, &size);
+        IRIS::iris_platform_info(0, IRIS::name, name, &size);
         return "IRIS Platform (" + std::string(name) + ")";
     }
 
@@ -239,16 +269,25 @@ struct platform_impl : rts::platform {
 private:
     void check_env() {
         if (auto const* policy = ::getenv("CHARM_SYCL_IRIS_POLICY")) {
-            USE_IRIS_ALL = false;
-            USE_IRIS_ANY = false;
+            USE_IRIS_FTF = false;
+            USE_IRIS_SDQ = false;
             USE_IRIS_ROUNDROBIN = false;
+            USE_IRIS_DEPEND = false;
+            USE_IRIS_DATA = false;
+            USE_IRIS_RANDOM = false;
             USE_IRIS_CPU = false;
             USE_IRIS_GPU = false;
 
-            if (strcasecmp(policy, "any") == 0) {
-                USE_IRIS_ANY = true;
-            } else if (strcasecmp(policy, "all") == 0) {
-                USE_IRIS_ALL = true;
+            if (strcasecmp(policy, "sdq") == 0) {
+                USE_IRIS_SDQ = true;
+            } else if (strcasecmp(policy, "ftf") == 0) {
+                USE_IRIS_FTF = true;
+            } else if (strcasecmp(policy, "depend") == 0) {
+                USE_IRIS_DEPEND = true;
+            } else if (strcasecmp(policy, "data") == 0) {
+                USE_IRIS_DATA = true;
+            } else if (strcasecmp(policy, "random") == 0) {
+                USE_IRIS_RANDOM = true;
             } else if (strcasecmp(policy, "roundrobin") == 0) {
                 USE_IRIS_ROUNDROBIN = true;
             } else if (strcasecmp(policy, "cpu") == 0) {
@@ -257,7 +296,7 @@ private:
                 USE_IRIS_GPU = true;
             } else {
                 throw std::runtime_error(
-                    fmt::format("Unknown CHARM_SYCL_IRIS_POLICY value: {}", policy));
+                    format::format("Unknown CHARM_SYCL_IRIS_POLICY value: {}", policy));
             }
         }
     }
@@ -265,12 +304,22 @@ private:
     std::vector<std::shared_ptr<rts::device>> devs_;
 };
 
+template <class IRIS>
 struct buffer_impl final : rts::buffer {
-    explicit buffer_impl(void*, size_t element_size, rts::range const& size)
+    using mem_t = typename IRIS::mem_t;
+
+    explicit buffer_impl(void* h_ptr, size_t element_size, rts::range const& size)
         : element_size_(element_size), size_(size) {
-        if (iris_mem_create(size_byte(), &mem_) != IRIS_SUCCESS) {
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
+        (void)h_ptr;
+        if (IRIS::iris_mem_create(size_byte(), &mem_) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_mem_create() failed");
         }
+#else
+        if (IRIS::iris_data_mem_create(&mem_, h_ptr, size_byte()) != IRIS::SUCCESS) {
+            throw std::runtime_error("iris_data_mem_create() failed");
+        }
+#endif
     }
 
     buffer_impl(buffer_impl const&) = delete;
@@ -282,7 +331,7 @@ struct buffer_impl final : rts::buffer {
     buffer_impl& operator=(buffer_impl&&) = delete;
 
     ~buffer_impl() {
-        // iris_mem_release(mem_);
+        IRIS::iris_mem_release(mem_);
     }
 
     void* get_pointer() override {
@@ -293,7 +342,7 @@ struct buffer_impl final : rts::buffer {
         return h_ptr_;
     }
 
-    iris_mem& get() {
+    mem_t& get() {
         return mem_;
     }
 
@@ -314,16 +363,17 @@ struct buffer_impl final : rts::buffer {
     }
 
 private:
-    iris_mem mem_;
+    mem_t mem_;
     size_t element_size_;
     rts::range size_;
     void* h_ptr_ = nullptr;
 };
 
+template <class IRIS>
 struct event_barrier_impl final : rts::event_barrier {
     void wait() override {
         if (need_sync_) {
-            if (iris_synchronize() != IRIS_SUCCESS) {
+            if (IRIS::iris_synchronize() != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_synchronize() failed");
             }
         }
@@ -335,14 +385,11 @@ private:
     bool need_sync_ = false;
 };
 
+template <class IRIS>
 struct event_impl final : rts::event {
-    explicit event_impl([[maybe_unused]] iris_task const& task, bool empty)
-        :
-#ifdef HAVE_IRIS_TASK_SUBMIT
-          task_(task),
-#endif
-          empty_(empty) {
-    }
+    using task_t = typename IRIS::task_t;
+
+    explicit event_impl(task_t const& task, bool empty) : task_(task), empty_(empty) {}
 
     ~event_impl() {}
 
@@ -354,8 +401,12 @@ struct event_impl final : rts::event {
 
     event_impl& operator=(event_impl&&) = delete;
 
-    std::unique_ptr<sycl::runtime::event_barrier> create_barrier() override {
-        return std::make_unique<event_barrier_impl>();
+    sycl::runtime::event_barrier* create_barrier() override {
+        return new event_barrier_impl<IRIS>();
+    }
+
+    void release_barrier(sycl::runtime::event_barrier* ptr) override {
+        delete ptr;
     }
 
     bool is_empty() const {
@@ -363,66 +414,62 @@ struct event_impl final : rts::event {
     }
 
     uint64_t profiling_command_submit() override {
-        iris_synchronize();
+        IRIS::iris_synchronize();
 
-#ifdef HAVE_IRIS_TASK_SUBMIT
         uint64_t submission_start_time;
-        iris_task_info(task_, iris_task_time_submit, &submission_start_time, nullptr);
+        IRIS::iris_task_info(task_, IRIS::task_time_submit, &submission_start_time, nullptr);
         return submission_start_time;
-#else
-        return -1;
-#endif
     }
 
     uint64_t profiling_command_start() override {
-        iris_synchronize();
+        IRIS::iris_synchronize();
 
-#ifdef HAVE_IRIS_TASK_SUBMIT
         size_t kernel_start_time;
-        iris_task_info(task_, iris_task_time_start, &kernel_start_time, nullptr);
+        IRIS::iris_task_info(task_, IRIS::task_time_start, &kernel_start_time, nullptr);
         return kernel_start_time;
-#else
-        return -1;
-#endif
     }
 
     uint64_t profiling_command_end() override {
-        iris_synchronize();
+        IRIS::iris_synchronize();
 
-#ifdef HAVE_IRIS_TASK_SUBMIT
         size_t kernel_end_time;
-        iris_task_info(task_, iris_task_time_end, &kernel_end_time, nullptr);
+        IRIS::iris_task_info(task_, IRIS::task_time_end, &kernel_end_time, nullptr);
         return kernel_end_time;
-#else
-        return -1;
-#endif
+    }
+
+    auto get() const {
+        return task_;
     }
 
 private:
-#ifdef HAVE_IRIS_TASK_SUBMIT
-    iris_task task_;
-#endif
+    task_t task_;
     bool empty_;
 };
 
-void event_barrier_impl::add(sycl::runtime::event& ev) {
-    if (!static_cast<event_impl&>(ev).is_empty()) {
+template <class IRIS>
+void event_barrier_impl<IRIS>::add(sycl::runtime::event& ev) {
+    if (!static_cast<event_impl<IRIS>&>(ev).is_empty()) {
         need_sync_ = true;
     }
 }
 
-struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
+template <class IRIS>
+struct task_impl final : rts::task, std::enable_shared_from_this<task_impl<IRIS>> {
+    using task_t = typename IRIS::task_t;
+    using kernel_t = typename IRIS::kernel_t;
+
     explicit task_impl() {
         task_.emplace();
-        if (iris_task_create(&*task_) != IRIS_SUCCESS) {
+        if (IRIS::iris_task_create(&*task_) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_task_create() failed");
         }
     }
 
     ~task_impl() {
-        if (profiling_enabled) {
-            iris_task_release(*task_);
-        }
+        // TODO: examine!
+        // if (profiling_enabled) {
+        //     iris_task_release(*task_);
+        // }
     }
 
     task_impl(task_impl const&) = delete;
@@ -437,12 +484,25 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
 
     void enable_profiling() override {
         profiling_enabled = true;
-        iris_task_retain(*task_, true);
+        IRIS::iris_task_retain(*task_, true);
+    }
+
+    void depends_on(rts::event const& ev) override {
+        auto task = static_cast<event_impl<IRIS> const&>(ev).get();
+
+        if (IRIS::iris_task_depend(*task_, 1, &task) != IRIS::SUCCESS) {
+            throw std::runtime_error("iris_task_depend() failed");
+        }
     }
 
     void depends_on(std::shared_ptr<rts::task> const& dep) override {
-        if (iris_task_depend(*task_, 1, &*std::dynamic_pointer_cast<task_impl>(dep)->task_) !=
-            IRIS_SUCCESS) {
+        DEBUG_FMT("depends_on(this={}, task={}) {} {}", format::ptr(this),
+                  format::ptr(dep.get()), format::ptr(&*task_),
+                  format::ptr(&*std::static_pointer_cast<task_impl<IRIS>>(dep)->task_));
+
+        if (IRIS::iris_task_depend(*task_, 1,
+                                   &*std::static_pointer_cast<task_impl<IRIS>>(dep)->task_) !=
+            IRIS::SUCCESS) {
             throw std::runtime_error("iris_task_depend() failed");
         }
     }
@@ -454,21 +514,21 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
     }
 
     void set_device(rts::device& dev) override {
-        policy_ = dynamic_cast<device_impl&>(dev).policy();
+        policy_ = static_cast<device_impl<IRIS>&>(dev).policy();
     }
 
     /* ----------- */
 
     void use_host() override {
         is_host_ = true;
-        policy_ = iris_cpu;
+        policy_ = IRIS::cpu;
     }
 
     /* ----------- */
 
     void set_kernel(char const* name, uint32_t) override {
         kernel_.emplace();
-        if (iris_kernel_create(name, &*kernel_) != IRIS_SUCCESS) {
+        if (IRIS::iris_kernel_create(name, &*kernel_) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_kernel_create() failed");
         }
         empty_ = false;
@@ -479,7 +539,7 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
     void set_host(std::function<void()> const& f) override {
         assert(is_host_ == true);
         hostfn_ = f;
-        if (f) {
+        if (hostfn_) {
             empty_ = false;
         }
     }
@@ -494,8 +554,6 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
         par_.lws[0] = 1;
         par_.lws[1] = 1;
         par_.lws[2] = 1;
-
-        set_range_params(1, 1, 1);
     }
 
     void set_range(rts::range const& r) override {
@@ -506,38 +564,6 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
         par_.lws[0] = 256;
         par_.lws[1] = 1;
         par_.lws[2] = 1;
-
-        set_range_params(r.size[0], r.size[1], r.size[2]);
-    }
-
-    void set_range(rts::range const& r, rts::id const& offset) override {
-        par_.gws[0] = ((r.size[2] + 255) / 256) * 256;
-        par_.gws[1] = r.size[1];
-        par_.gws[2] = r.size[0];
-
-        par_.lws[0] = 256;
-        par_.lws[1] = 1;
-        par_.lws[2] = 1;
-
-        set_range_params(r.size[0], r.size[1], r.size[2]);
-        set_range_params(offset.size[0], offset.size[1], offset.size[2]);
-    }
-
-    void set_range_params(size_t size0, size_t size1, size_t size2) {
-        if (iris_kernel_setarg(*kernel_, arg_idx_, sizeof(size0),
-                               const_cast<size_t*>(&size0)) != IRIS_SUCCESS) {
-            throw std::runtime_error("iris_kernel_setarg() failed");
-        }
-        if (iris_kernel_setarg(*kernel_, arg_idx_ + 1, sizeof(size1),
-                               const_cast<size_t*>(&size1)) != IRIS_SUCCESS) {
-            throw std::runtime_error("iris_kernel_setarg() failed");
-        }
-        if (iris_kernel_setarg(*kernel_, arg_idx_ + 2, sizeof(size2),
-                               const_cast<size_t*>(&size2)) != IRIS_SUCCESS) {
-            throw std::runtime_error("iris_kernel_setarg() failed");
-        }
-
-        arg_idx_ += 3;
     }
 
     void set_nd_range(rts::nd_range const& ndr) override {
@@ -545,14 +571,9 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
         par_.gws[1] = ndr.global[1];
         par_.gws[2] = ndr.global[0];
 
-        set_range_params(ndr.global[0] / ndr.local[0], ndr.global[1] / ndr.local[1],
-                         ndr.global[2] / ndr.local[2]);
-
         par_.lws[0] = ndr.local[2];
         par_.lws[1] = ndr.local[1];
         par_.lws[2] = ndr.local[0];
-
-        set_range_params(ndr.local[0], ndr.local[1], ndr.local[2]);
     }
 
     void set_local_mem_size(size_t byte) override {
@@ -561,17 +582,14 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
             fprintf(stderr, "Error: Local memory is not supported on IRIS RTS\n");
             std::abort();
         }
-
-        unsigned int* p = nullptr;
-        set_param(&p, sizeof(p));
     }
 
     /* ----------- */
 
     void set_param(void const* ptr, size_t size) override {
         if (kernel_) {
-            if (iris_kernel_setarg(*kernel_, arg_idx_, size, const_cast<void*>(ptr)) !=
-                IRIS_SUCCESS) {
+            if (IRIS::iris_kernel_setarg(*kernel_, arg_idx_, size, const_cast<void*>(ptr)) !=
+                IRIS::SUCCESS) {
                 throw std::runtime_error("iris_kernel_setarg() failed");
             }
         }
@@ -582,94 +600,115 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
     void set_buffer_param(rts::buffer& buf, void* h_ptr, rts::memory_domain const& dom,
                           rts::memory_access ma, rts::id const& offset,
                           size_t offset_byte) override {
-        auto& buf_ = dynamic_cast<buffer_impl&>(buf);
+        auto& buf_ = static_cast<buffer_impl<IRIS>&>(buf);
         auto const htod = (ma != rts::memory_access::write_only) && !is_host_ && dom.is_host();
         auto const dtoh = (ma != rts::memory_access::write_only) && is_host_ && !dom.is_host();
 
+        (void)offset;
         DEBUG_FMT(
             "set_buffer_param(h_ptr={}, dom={}, ma={}, off=[{}, {}, {}], off_byte={}) htod={} "
             "dtoh={}",
-            fmt::ptr(h_ptr), dom.id(), static_cast<int>(ma), offset.size[0], offset.size[1],
+            format::ptr(h_ptr), dom.id(), static_cast<int>(ma), offset.size[0], offset.size[1],
             offset.size[2], offset_byte, htod, dtoh);
 
+#ifdef CHARM_SYCL_USE_IRIS_DMEM
+        (void)h_ptr;
+#endif
+
         if (htod) {
-            if (iris_task_h2d(*task_, buf_.get(), buf_.offset_byte(), buf_.size_byte(),
-                              h_ptr) != IRIS_SUCCESS) {
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
+            if (IRIS::iris_task_h2d(*task_, buf_.get(), buf_.offset_byte(), buf_.size_byte(),
+                                    h_ptr) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_task_h2d() failed");
             }
+#endif
             empty_ = false;
         } else if (dtoh) {
-            if (iris_task_d2h(*task_, buf_.get(), buf_.offset_byte(), buf_.size_byte(),
-                              h_ptr) != IRIS_SUCCESS) {
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
+            if (IRIS::iris_task_d2h(*task_, buf_.get(), buf_.offset_byte(), buf_.size_byte(),
+                                    h_ptr) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_task_d2h() failed");
             }
+#else
+            if (IRIS::iris_task_dmem_flush_out(*task_, buf_.get()) != IRIS::SUCCESS) {
+                throw std::runtime_error("iris_task_dmem_flush_out() failed");
+            }
+#endif
             empty_ = false;
         }
 
         if (kernel_) {
-            static_assert(iris_r != 0 && iris_w != 0 && iris_rw != 0);
             size_t mode = 0;
 
             switch (ma) {
                 case rts::memory_access::read_only:
-                    mode = iris_r;
+                    mode = IRIS::r;
                     break;
 
                 case rts::memory_access::write_only:
-                    mode = iris_w;
+                    mode = IRIS::w;
                     break;
 
                 default:
-                    mode = iris_rw;
+                    mode = IRIS::rw;
                     break;
             }
 
-            if (iris_kernel_setmem_off(*kernel_, arg_idx_, buf_.get(), offset_byte, mode) !=
-                IRIS_SUCCESS) {
+            if (IRIS::iris_kernel_setmem_off(*kernel_, arg_idx_, buf_.get(), offset_byte,
+                                             mode) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_kernel_setmem_off() failed");
-            }
-
-            rts::accessor acc;
-            acc.size[0] = buf_.get_size().size[0];
-            acc.size[1] = buf_.get_size().size[1];
-            acc.size[2] = buf_.get_size().size[2];
-            acc.offset[0] = offset.size[0];
-            acc.offset[1] = offset.size[1];
-            acc.offset[2] = offset.size[2];
-
-            if (iris_kernel_setarg(*kernel_, arg_idx_ + 1, sizeof(acc), &acc) != IRIS_SUCCESS) {
-                throw std::runtime_error("iris_kernel_setarg() failed");
             }
 
             empty_ = false;
         }
 
-        arg_idx_ += 2;
+        arg_idx_ += 1;
     }
 
     /* ----------- */
 
     void copy_1d(rts::buffer&, size_t, rts::buffer&, size_t, size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support D2D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support D2D copy");
         std::abort();
     }
 
     void copy_1d(rts::buffer& src, size_t src_off_byte, void* dst, size_t len_byte) override {
-        DEBUG_FMT("copy_1d: iris_task_d2h(): this={}", fmt::ptr(this));
+        DEBUG_FMT("copy_1d: iris_task_d2h(): this={}", format::ptr(this));
 
-        if (iris_task_d2h(*task_, static_cast<buffer_impl&>(src).get(), src_off_byte, len_byte,
-                          dst) != IRIS_SUCCESS) {
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
+        if (IRIS::iris_task_d2h(*task_, static_cast<buffer_impl<IRIS>&>(src).get(),
+                                src_off_byte, len_byte, dst) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_task_d2h() failed");
         }
+#else
+        auto& src_ = static_cast<buffer_impl<IRIS>&>(src);
+
+        if (src_off_byte != 0) {
+            fprintf(stderr, "copy_1d: IRIS RTS does not support copy with offsets.");
+            std::abort();
+        }
+        if (len_byte != src_.size_byte()) {
+            fprintf(stderr, "copy_1d: IRIS RTS does not support partial copy.");
+            std::abort();
+        }
+
+        if (IRIS::iris_data_mem_update(src_.get(), dst)) {
+            throw std::runtime_error("iris_data_mem_update() failed");
+        }
+        if (IRIS::iris_task_dmem_flush_out(*task_, src_.get())) {
+            throw std::runtime_error("iris_task_dmem_flush_out_ptr() failed");
+        }
+#endif
         empty_ = false;
     }
 
     void copy_1d(void const* src, rts::buffer& dst, size_t dst_off_byte,
                  size_t len_byte) override {
-        DEBUG_FMT("copy_1d: iris_task_h2d(): this={}", fmt::ptr(this));
+        DEBUG_FMT("copy_1d: iris_task_h2d(): this={}", format::ptr(this));
 
-        if (iris_task_h2d(*task_, static_cast<buffer_impl&>(dst).get(), dst_off_byte, len_byte,
-                          const_cast<void*>(src)) != IRIS_SUCCESS) {
+        if (IRIS::iris_task_h2d(*task_, static_cast<buffer_impl<IRIS>&>(dst).get(),
+                                dst_off_byte, len_byte,
+                                const_cast<void*>(src)) != IRIS::SUCCESS) {
             throw std::runtime_error("iris_task_h2d() failed");
         }
         empty_ = false;
@@ -677,48 +716,56 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
 
     void copy_2d(rts::buffer&, size_t, size_t, rts::buffer&, size_t, size_t, size_t,
                  size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 2D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 2D copy");
         std::abort();
     }
 
     void copy_2d(rts::buffer&, size_t, size_t, void*, size_t, size_t, size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 2D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 2D copy");
         std::abort();
     }
 
     void copy_2d(void const*, size_t, rts::buffer&, size_t, size_t, size_t, size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 2D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 2D copy");
         std::abort();
     }
 
     void copy_3d(rts::buffer&, size_t, size_t, size_t, rts::buffer&, size_t, size_t, size_t,
                  size_t, size_t, size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 3D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 3D copy");
         std::abort();
     }
 
     void copy_3d(rts::buffer&, size_t, size_t, size_t, void*, size_t, size_t, size_t, size_t,
                  size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 3D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 3D copy");
         std::abort();
     }
 
     void copy_3d(void const*, size_t, size_t, rts::buffer&, size_t, size_t, size_t, size_t,
                  size_t, size_t) override {
-        fmt::print(stderr, "Error: IRIS RTS does not support 3D copy");
+        format::print(std::cerr, "Error: IRIS RTS does not support 3D copy");
         std::abort();
+    }
+
+    void fill(rts::buffer& dst, size_t) override {
+        if (IRIS::iris_task_cmd_reset_mem(*task_, static_cast<buffer_impl<IRIS>&>(dst).get(),
+                                          0x00) != IRIS::SUCCESS) {
+            throw std::runtime_error("iris_task_cmd_reset_mem() failed");
+        }
+        empty_ = false;
     }
 
     /* ----------- */
 
     std::unique_ptr<rts::event> submit() override {
-        DEBUG_FMT("submit(): this={}", fmt::ptr(this));
+        DEBUG_FMT("submit(): this={}", format::ptr(this));
 
         if (kernel_) {
-            DEBUG_FMT("iris_task_kernel_object: this={}", fmt::ptr(this));
+            DEBUG_FMT("iris_task_kernel_object: this={}", format::ptr(this));
 
-            if (iris_task_kernel_object(*task_, *kernel_, 3, nullptr, par_.gws.data(),
-                                        par_.lws.data()) != IRIS_SUCCESS) {
+            if (IRIS::iris_task_kernel_object(*task_, *kernel_, 3, nullptr, par_.gws.data(),
+                                              par_.lws.data()) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_task_kernel_object() failed");
             }
         } else if (hostfn_) {
@@ -728,22 +775,22 @@ struct task_impl final : rts::task, std::enable_shared_from_this<task_impl> {
         }
 
         if (!empty_) {
-            DEBUG_FMT("iris_task_submit: this={}", fmt::ptr(this));
+            DEBUG_FMT("iris_task_submit: this={}", format::ptr(this));
 
-            if (iris_task_submit(*task_, policy_, nullptr, 0) != IRIS_SUCCESS) {
+            if (IRIS::iris_task_submit(*task_, policy_, nullptr, 0) != IRIS::SUCCESS) {
                 throw std::runtime_error("iris_task_submit");
             }
         }
 
-        auto ev = std::make_unique<event_impl>(*task_, empty_);
+        auto ev = std::make_unique<event_impl<IRIS>>(*task_, empty_);
         task_.reset();
 
         return ev;
     }
 
 private:
-    std::optional<iris_task> task_;
-    std::optional<iris_kernel> kernel_;
+    std::optional<task_t> task_;
+    std::optional<kernel_t> kernel_;
     parallel_params par_;
     int policy_;
     std::function<void()> hostfn_;
@@ -828,6 +875,7 @@ private:
     }
 };
 
+template <class IRIS>
 struct subsystem_impl final : rts::subsystem {
     subsystem_impl() {
         init_logging();
@@ -843,23 +891,24 @@ struct subsystem_impl final : rts::subsystem {
     subsystem_impl& operator=(subsystem_impl&&) = delete;
 
     void shutdown() override {
-        iris_synchronize();
-        iris_finalize();
+        IRIS::iris_synchronize();
+        IRIS::iris_finalize();
+        IRIS::close();
     }
 
     std::vector<std::shared_ptr<rts::platform>> get_platforms() const override {
         std::vector<std::shared_ptr<rts::platform>> plts;
-        plts.push_back(std::make_shared<platform_impl>());
+        plts.push_back(std::make_shared<platform_impl<IRIS>>());
         return plts;
     }
 
     std::shared_ptr<rts::task> new_task() override {
-        return std::make_shared<task_impl>();
+        return std::make_shared<task_impl<IRIS>>();
     }
 
     std::unique_ptr<rts::buffer> new_buffer(void* h_ptr, size_t element_size,
                                             rts::range const& size) override {
-        return std::make_unique<buffer_impl>(h_ptr, element_size, size);
+        return std::make_unique<buffer_impl<IRIS>>(h_ptr, element_size, size);
     }
 
     rts::memory_domain& get_host_memory_domain() override {
@@ -883,15 +932,16 @@ private:
 
     file save_binary(char const* kind, char const* file_ext) {
         auto out = file::mktemp(file_ext);
-        auto* bin = reinterpret_cast<bin_info const*>(
-            kreg::get().find("", kreg::fnv1a(""), kind, kreg::fnv1a(kind)));
+
+        auto const* kinfo = kreg::get().find("", kreg::fnv1a(""), kind, kreg::fnv1a(kind));
+        auto const* bin = reinterpret_cast<bin_info const*>(kinfo ? kinfo->fn : nullptr);
 
         if (!bin) {
             DEBUG_FMT("iris: {} is not found", kind);
             return {};
         }
 
-        DEBUG_FMT("iris: {} found: ptr={} len={}", kind, fmt::ptr(bin->text), bin->len);
+        DEBUG_FMT("iris: {} found: ptr={} len={}", kind, format::ptr(bin->text), bin->len);
 
         errno = 0;
         auto const nw = ::write(out.fd, bin->text, bin->len);
@@ -909,7 +959,7 @@ private:
 
         auto out = save_binary("_IRIS_OMP_LOADER_", ".so");
         if (out.opened()) {
-            iris_env_set("KERNEL_BIN_OPENMP", out.filename.c_str());
+            IRIS::iris_env_set("KERNEL_BIN_OPENMP", out.filename.c_str());
         }
 
         return out;
@@ -922,7 +972,7 @@ private:
 
         auto out = save_binary("_PTX_", ".ptx");
         if (out.opened()) {
-            iris_env_set("KERNEL_BIN_CUDA", out.filename.c_str());
+            IRIS::iris_env_set("KERNEL_BIN_CUDA", out.filename.c_str());
         }
 
         return out;
@@ -935,14 +985,14 @@ private:
 
         auto out = save_binary("_HSACO_", ".hip");
         if (out.opened()) {
-            iris_env_set("KERNEL_BIN_HIP", out.filename.c_str());
+            IRIS::iris_env_set("KERNEL_BIN_HIP", out.filename.c_str());
         }
 
         return out;
     }
 
     void init_iris() {
-        if (iris_init(0, nullptr, 1) != IRIS_SUCCESS) {
+        if (IRIS::iris_init(0, nullptr, 1) != IRIS::SUCCESS) {
             throw std::runtime_error("Failed to initialize IRIS runtime");
         }
     }
@@ -956,11 +1006,19 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime::impl {
 
-std::unique_ptr<rts::subsystem> make_iris_rts() {
+error::result<std::unique_ptr<rts::subsystem>>
+#ifndef CHARM_SYCL_USE_IRIS_DMEM
+make_iris_rts()
+#else
+make_iris_dmem_rts()
+#endif
+{
     init_logging();
-    utils::logging::timer_reset();
+    logging::timer_reset();
     fiber_init();
-    return std::make_unique<subsystem_impl>();
+
+    CHECK_ERROR(iris_interface_20000::init());
+    return std::make_unique<subsystem_impl<iris_interface_20000>>();
 }
 
 }  // namespace runtime::impl

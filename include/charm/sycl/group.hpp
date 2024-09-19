@@ -1,9 +1,7 @@
 #pragma once
 
 #include <stdlib.h>
-#include <charm/sycl/fwd.hpp>
-#include <charm/sycl/id.hpp>
-#include <charm/sycl/range.hpp>
+#include <charm/sycl.hpp>
 
 CHARM_SYCL_BEGIN_NAMESPACE
 
@@ -25,13 +23,7 @@ struct group {
     }
 
     CHARM_SYCL_INLINE id<Dimensions> get_group_id() const {
-        if constexpr (Dimensions == 1) {
-            return {group_id_[0]};
-        } else if constexpr (Dimensions == 2) {
-            return {group_id_[0], group_id_[1]};
-        } else {
-            return {group_id_[0], group_id_[1], group_id_[2]};
-        }
+        return group_id_;
     }
 
     CHARM_SYCL_INLINE size_t get_group_id(int dimension) const {
@@ -39,13 +31,7 @@ struct group {
     }
 
     CHARM_SYCL_INLINE id<Dimensions> get_local_id() const {
-        if constexpr (Dimensions == 1) {
-            return {local_id_[0]};
-        } else if constexpr (Dimensions == 2) {
-            return {local_id_[0], local_id_[1]};
-        } else {
-            return {local_id_[0], local_id_[1], local_id_[2]};
-        }
+        return local_id_;
     }
 
     CHARM_SYCL_INLINE size_t get_local_id(int dimension) const {
@@ -53,13 +39,7 @@ struct group {
     }
 
     CHARM_SYCL_INLINE range<Dimensions> get_local_range() const {
-        if constexpr (Dimensions == 1) {
-            return {local_range_[0]};
-        } else if constexpr (Dimensions == 2) {
-            return {local_range_[0], local_range_[1]};
-        } else {
-            return {local_range_[0], local_range_[1], local_range_[2]};
-        }
+        return local_range_;
     }
 
     CHARM_SYCL_INLINE size_t get_local_range(int dimension) const {
@@ -67,13 +47,7 @@ struct group {
     }
 
     CHARM_SYCL_INLINE range<Dimensions> get_group_range() const {
-        if constexpr (Dimensions == 1) {
-            return {group_range_[0]};
-        } else if constexpr (Dimensions == 2) {
-            return {group_range_[0], group_range_[1]};
-        } else {
-            return {group_range_[0], group_range_[1], local_id_[2]};
-        }
+        return group_range_;
     }
 
     CHARM_SYCL_INLINE size_t get_group_range(int dimension) const {
@@ -108,8 +82,8 @@ struct group {
         return get_local_linear_id() == 0;
     }
 
-    // template <typename WorkItemFunctionT>
-    // void parallel_for_work_item(const WorkItemFunctionT &func) const;
+    template <class WorkItemFunctionT>
+    void parallel_for_work_item(WorkItemFunctionT const& func) const;
 
     // template <typename WorkItemFunctionT>
     // void parallel_for_work_item(range<Dimensions> logicalRange,
@@ -139,44 +113,100 @@ struct group {
     // void wait_for(EventTN... events) const;
 
 private:
+    friend struct sycl::handler;
+    friend struct h_item<Dimensions>;
+
     template <int D>
     friend nd_item<D> detail::make_nd_item();
 
-    template <int D = Dimensions>
-    explicit group(std::enable_if_t<D == 1, range<Dimensions>> group_range,
-                   range<Dimensions> local_range, id<Dimensions> group_id,
-                   id<Dimensions> local_id)
-        : group_range_{group_range[0]},
-          local_range_{local_range[0]},
-          group_id_{group_id[0]},
-          local_id_{local_id[0]} {}
+    template <int D>
+    friend nd_item<D> detail::make_nd_item(range<D> const& group_range,
+                                           range<D> const& local_range, id<D> const& group_id,
+                                           id<D> const& local_id);
+    template <class Group>
+    friend void group_barrier(Group& g, memory_scope fence_scope);
 
-    template <int D = Dimensions>
-    explicit group(std::enable_if_t<D == 2, range<Dimensions>> group_range,
-                   range<Dimensions> local_range, id<Dimensions> group_id,
-                   id<Dimensions> local_id)
-        : group_range_{group_range[0], group_range[1]},
-          local_range_{local_range[0], local_range[1]},
-          group_id_{group_id[0], group_id[1]},
-          local_id_{local_id[0], local_id[1]} {}
+    explicit group(range<Dimensions> const& group_range, range<Dimensions> const& local_range,
+                   id<Dimensions> const& group_id, id<Dimensions> const& local_id)
+        : group_range_(group_range),
+          local_range_(local_range),
+          group_id_(group_id),
+          local_id_(local_id) {}
 
-    template <int D = Dimensions>
-    explicit group(std::enable_if_t<D == 3, range<Dimensions>> group_range,
-                   range<Dimensions> local_range, id<Dimensions> group_id,
-                   id<Dimensions> local_id)
-        : group_range_{group_range[0], group_range[1], group_range[2]},
-          local_range_{local_range[0], local_range[1], local_range[2]},
-          group_id_{group_id[0], group_id[1], group_id[2]},
-          local_id_{local_id[0], local_id[1], local_id[2]} {}
+    group<Dimensions> set_local(range<Dimensions> const& local_range,
+                                id<Dimensions> const& local_id) const {
+        return group<Dimensions>(group_range_, local_range, group_id_, local_id);
+    }
 
-    size_t group_id_[Dimensions];
-    size_t local_id_[Dimensions];
-    size_t group_range_[Dimensions];
-    size_t local_range_[Dimensions];
-    // id<Dimensions> group_id_;
-    // id<Dimensions> local_id_;
-    // range<Dimensions> group_range_;
-    // range<Dimensions> local_range_;
+    h_item<Dimensions> into_h_item() const;
+
+    nd_item<Dimensions> into_nd_item() const;
+
+    id<Dimensions> group_id_;
+    id<Dimensions> local_id_;
+    range<Dimensions> group_range_;
+    range<Dimensions> local_range_;
+};
+
+template <int Dimensions>
+struct h_item {
+    static constexpr int dimensions = Dimensions;
+
+    h_item() = delete;
+
+    item<Dimensions> get_global() const;
+
+    item<Dimensions> get_local() const;
+
+    item<Dimensions> get_logical_local() const;
+
+    item<Dimensions> get_physical_local() const;
+
+    range<Dimensions> get_global_range() const;
+
+    size_t get_global_range(int dimension) const;
+
+    id<Dimensions> get_global_id() const;
+
+    size_t get_global_id(int dimension) const;
+
+    range<Dimensions> get_local_range() const;
+
+    size_t get_local_range(int dimension) const;
+
+    id<Dimensions> get_local_id() const;
+
+    size_t get_local_id(int dimension) const;
+
+    range<Dimensions> get_logical_local_range() const;
+
+    size_t get_logical_local_range(int dimension) const;
+
+    id<Dimensions> get_logical_local_id() const;
+
+    size_t get_logical_local_id(int dimension) const;
+
+    range<Dimensions> get_physical_local_range() const;
+
+    size_t get_physical_local_range(int dimension) const;
+
+    id<Dimensions> get_physical_local_id() const;
+
+    size_t get_physical_local_id(int dimension) const;
+
+private:
+    friend struct handler;
+    friend struct group<Dimensions>;
+
+    explicit h_item(group<Dimensions> const& g) : g_(g) {}
+
+    range<Dimensions> get_physical_group_range();
+
+    id<Dimensions> get_physical_group_id();
+
+    nd_item<Dimensions> into_nd_item() const;
+
+    group<Dimensions> g_;
 };
 
 CHARM_SYCL_END_NAMESPACE

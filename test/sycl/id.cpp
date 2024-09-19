@@ -1,6 +1,5 @@
 #include <type_traits>
-#include <catch2/catch_template_test_macros.hpp>
-#include "common.hpp"
+#include "ut_common.hpp"
 
 template <class>
 struct get_dim;
@@ -8,35 +7,39 @@ struct get_dim;
 template <int D>
 struct get_dim<sycl::id<D>> : std::integral_constant<int, D> {};
 
-TEMPLATE_TEST_CASE("id", "[id][sycl]", sycl::id<1>, sycl::id<2>, sycl::id<3>) {
-    auto constexpr N = get_dim<TestType>::value;
+template <class Type>
+void run_tests() {
+    "id"_test = [] {
+        auto constexpr N = get_dim<Type>::value;
 
-    SECTION("default constructor") {
-        TestType x;
-        REQUIRE(x.size() == 0);
-    }
+        Type x;
+        expect(x.size() == 0_i);
 
-    SECTION("operator size_t") {
         if constexpr (N == 1) {
-            STATIC_REQUIRE(std::is_convertible_v<TestType, size_t>);
+            expect(std::is_convertible_v<Type, size_t>);
         } else {
-            STATIC_REQUIRE(!std::is_convertible_v<TestType, size_t>);
+            expect(!std::is_convertible_v<Type, size_t>);
         }
-    }
 
-    SECTION("constructor(range)") {
         if constexpr (N == 1) {
             auto const x = sycl::range<N>(100);
-            auto const y = TestType(x);
-            REQUIRE(x.size() == y.size());
+            auto const y = Type(x);
+            expect(eq(x.size(), y.size()));
         } else if constexpr (N == 2) {
             auto const x = sycl::range<N>(100, 200);
-            auto const y = TestType(x);
-            REQUIRE(x.size() == y.size());
+            auto const y = Type(x);
+            expect(eq(x.size(), y.size()));
         } else {
             auto const x = sycl::range<N>(100, 200, 300);
-            auto const y = TestType(x);
-            REQUIRE(x.size() == y.size());
+            auto const y = Type(x);
+            expect(eq(x.size(), y.size()));
         }
-    }
+    };
+}
+
+int main() {
+    run_tests<sycl::id<1>>();
+    run_tests<sycl::id<2>>();
+    run_tests<sycl::id<3>>();
+    return 0;
 }

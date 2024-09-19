@@ -39,11 +39,12 @@ inline queue::queue(const context& syclContext, const device& syclDevice,
                     const property_list& propList)
     : queue(syclContext, syclDevice, async_handler(), propList) {}
 
-inline queue::queue(const context& syclContext, const device& syclDevice,
-                    const async_handler& asyncHandler, const property_list& propList)
-    : impl_(runtime::make_queue(runtime::impl_access::get_impl(syclContext),
-                                runtime::impl_access::get_impl(syclDevice), asyncHandler,
-                                runtime::impl_access::get_impl(propList).get())) {}
+inline queue::queue(const context& syclContext, const device& syclDevice, const async_handler&,
+                    const property_list& propList)
+    : impl_(runtime::make_queue(
+          runtime::impl_access::get_impl(syclContext),
+          runtime::impl_access::get_impl(syclDevice),
+          runtime::get_prop<property::queue::enable_profiling>(propList))) {}
 
 inline backend queue::get_backend() const noexcept {
     return impl_->get_backend();

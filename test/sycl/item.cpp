@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
 template <int D>
 sycl::range<D> single_range() {
@@ -11,25 +11,27 @@ sycl::range<D> single_range() {
     }
 }
 
-TEMPLATE_TEST_CASE_SIG("item", "", ((int D), D), (2)) {
-    // TEMPLATE_TEST_CASE_SIG("item", "", ((int D), D), (1), (2), (3)) {
+int main() {
     sycl::queue q;
 
-    int result = -1;
+    "item"_test = [&]() {
+        int result = -1;
+        {
+            sycl::buffer<int, 2> buffer(&result, single_range<2>());
 
-    {
-        sycl::buffer<int, D> buffer(&result, single_range<D>());
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<int, 2, sycl::access_mode::write> a(buffer, h);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<int, D, sycl::access_mode::write> a(buffer, h);
-
-            h.parallel_for(buffer.get_range(), [=](sycl::item<D> i) {
-                a[i] = 12345;
+                h.parallel_for(buffer.get_range(), [=](sycl::item<2> i) {
+                    a[i] = 12345;
+                });
             });
-        });
 
-        ev.wait();
-    }
+            ev.wait();
+        }
 
-    REQUIRE(result == 12345);
+        expect(result == 12345_i);
+    };
+
+    return 0;
 }

@@ -8,3 +8,7 @@ endif()
 if(hip_FOUND)
     target_compile_definitions(utils-target PRIVATE -DCHARM_SYCL_HAVE_AMD_HIP)
 endif()
+
+if(OpenMP_FOUND)
+    target_compile_definitions(utils-target PRIVATE -DCHARM_SYCL_HAVE_OPENMP)
+endif()

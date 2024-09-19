@@ -1,0 +1,89 @@
+#pragma once
+
+#include <cstdlib>
+
+CHARM_SYCL_BEGIN_NAMESPACE
+
+template <int> struct id;
+template <int, bool> struct item;
+template <int> struct range;
+
+template <>
+struct <%- self.name() %><<%- dim %>> {
+    <% if self.is_id() { %>
+    inline <%- self.name() %>();
+    <% } %>
+
+    <% if dim == 1 { %>
+    inline <%- self.name() %>(size_t dim0);
+    <% } else if dim == 2 { %>
+    inline <%- self.name() %>(size_t dim0, size_t dim1);
+    <% } else { %>
+    inline <%- self.name() %>(size_t dim0, size_t dim1, size_t dim2);
+    <% } %>
+
+    <% if self.is_id() { %>
+    inline <%- self.name() %>(range<<%- dim %>> const&);
+
+    inline <%- self.name() %>(item<<%- dim %>> const&);
+    <% } %>
+
+    <% if self.is_id() && dim == 1 { %>
+    inline operator size_t() const;
+    <% } %>
+
+    inline CHARM_SYCL_INLINE size_t size() const;
+
+    inline CHARM_SYCL_INLINE size_t get(size_t dimension) const;
+
+    inline CHARM_SYCL_INLINE size_t& operator[](size_t dimension);
+
+    inline CHARM_SYCL_INLINE size_t const& operator[](size_t dimension) const;
+
+    <% for op in ops { %>
+        <% if op.is_rel() { %>
+            friend inline CHARM_SYCL_INLINE bool operator<%- op.str %>(
+                <%- self.name() %><<%- dim %>> const& lhs,
+                <%- self.name() %><<%- dim %>> const& rhs
+            );
+        <% } else if op.is_bin() { %>
+            friend inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+                <%- self.name() %><<%- dim %>> const& lhs,
+                <%- self.name() %><<%- dim %>> const& rhs
+            );
+
+            friend inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+                size_t lhs,
+                <%- self.name() %><<%- dim %>> const& rhs
+            );
+
+            friend inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>> operator<%- op.str %>(
+                <%- self.name() %><<%- dim %>> const& lhs,
+                size_t rhs
+            );
+        <% } else if op.is_compound() { %>
+            friend inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>>& operator<%- op.str %>(
+                <%- self.name() %><<%- dim %>>& lhs,
+                <%- self.name() %><<%- dim %>> const& rhs
+            );
+
+            friend inline CHARM_SYCL_INLINE <%- self.name() %><<%- dim %>>& operator<%- op.str %>(
+                <%- self.name() %><<%- dim %>>& lhs,
+                size_t rhs
+            );
+        <% } %>
+    <% } %>
+
+private:
+    size_t <%- self.name() %>_[<%- dim %>];
+};
+
+<% if dim == 1 { %>
+<%- self.name() %>(size_t) -> <%- self.name() %><1>;
+<% } else if dim == 2 { %>
+<%- self.name() %>(size_t, size_t) -> <%- self.name() %><2>;
+<% } else { %>
+<%- self.name() %>(size_t, size_t, size_t) -> <%- self.name() %><3>;
+<% } %>
+
+CHARM_SYCL_END_NAMESPACE

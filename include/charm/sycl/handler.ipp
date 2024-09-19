@@ -3,173 +3,433 @@
 #include <charm/sycl.hpp>
 #include <charm/sycl/fnv1a.hpp>
 
-#if !defined(CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME)
-#    if defined(__clang__) && __clang_major__ >= 13 && defined(__has_builtin)
-#        if __has_builtin(__builtin_sycl_unique_stable_name)
-#            define CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME 1
-#        else
-#            define CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME 0
-#        endif
-#    endif
-#endif
-
-#if defined(__SYCL_DEVICE_ONLY__) && !CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME
+#if defined(__SYCL_DEVICE_ONLY__) && !__has_builtin(__builtin_sycl_unique_stable_name)
 #    error __builtin_sycl_unique_stable_name() is not supported by the compiler.
 #endif
 
 CHARM_SYCL_BEGIN_NAMESPACE
 
-namespace detail {
-
-struct has_bind_ops_wrapper {
-    template <class K, class H>
-    auto operator()(K const& k, H& h) -> decltype(K::__do_binds(h, k), std::true_type());
-
-    auto operator()(...) -> std::false_type;
-};
-
-template <class K, class H>
-constexpr bool has_bind_ops_v =
-    decltype(has_bind_ops_wrapper()(std::declval<K const&>(), std::declval<H&>()))::value;
-
-}  // namespace detail
-
 inline handler::handler(queue const& q)
-    : impl_(runtime::make_handler(runtime::impl_access::get_impl(q))) {}
+    : q_(runtime::impl_access::get_impl(q)), impl_(runtime::make_handler(q_)) {}
 
-template <class KernelName, int Dimensions, class KernelType>
-inline void handler::parallel_for(range<Dimensions> const& range, KernelType const& kernel) {
-#if !CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME
-    (void)range;
-    (void)kernel;
-    std::terminate();
-#else
-    constexpr char const* type_name = __builtin_sycl_unique_stable_name(KernelType);
-
-    auto const type_len = std::strlen(type_name);
-    auto const name_len = 3 + type_len;
-    auto* name = reinterpret_cast<char*>(alloca(name_len + 1));
-    memcpy(name, "_s_", 3);
-    memcpy(name + 3, type_name, type_len);
-    name[name_len] = '\0';
-
-    auto const h = detail::fnv1a(name, name_len);
-    impl_->parallel_for(detail::extend(range), name, h);
-
-    if constexpr (detail::has_bind_ops_v<KernelType, handler>) {
-        KernelType::__do_binds(*this, kernel);
-    }
-
-#    ifdef __SYCL_DEVICE_ONLY__
-    // Dummy invocations are required to keep the function body in the AST.
-    if constexpr (Dimensions == 1) {
-        (void)kernel(detail::make_item(sycl::range<Dimensions>(1), sycl::id<Dimensions>()));
-    } else if constexpr (Dimensions == 2) {
-        (void)kernel(detail::make_item(sycl::range<Dimensions>(1, 1), sycl::id<Dimensions>()));
-    } else {
-        (void)kernel(
-            detail::make_item(sycl::range<Dimensions>(1, 1, 1), sycl::id<Dimensions>()));
-    }
-#    endif
-#endif
-}
-
-template <class KernelName, int Dimensions, class KernelType>
-inline void handler::parallel_for(range<Dimensions> const& range, id<Dimensions> const& offset,
-                                  KernelType const& kernel) {
-#if !CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME
-    (void)offset;
-    (void)range;
-    (void)kernel;
-    std::terminate();
-#else
-    constexpr char const* type_name = __builtin_sycl_unique_stable_name(KernelType);
-
-    auto const type_len = std::strlen(type_name);
-    auto const name_len = 3 + type_len;
-    auto* name = reinterpret_cast<char*>(alloca(name_len + 1));
-    memcpy(name, "_s_", 3);
-    memcpy(name + 3, type_name, type_len);
-    name[name_len] = '\0';
-
-    auto const h = detail::fnv1a(name, name_len);
-    impl_->parallel_for(detail::extend(range), detail::extend(offset), name, h);
-
-    if constexpr (detail::has_bind_ops_v<KernelType, handler>) {
-        KernelType::__do_binds(*this, kernel);
-    }
-
-#    ifdef __SYCL_DEVICE_ONLY__
-    // Dummy invocations are required to keep the function body in the AST.
-    if constexpr (Dimensions == 1) {
-        (void)kernel(detail::make_item(sycl::range<Dimensions>(1), sycl::id<Dimensions>()));
-    } else if constexpr (Dimensions == 2) {
-        (void)kernel(detail::make_item(sycl::range<Dimensions>(1, 1), sycl::id<Dimensions>()));
-    } else {
-        (void)kernel(
-            detail::make_item(sycl::range<Dimensions>(1, 1, 1), sycl::id<Dimensions>()));
-    }
-#    endif
-#endif
+void handler::depends_on(event ev) {
+    impl_->depends_on(runtime::impl_access::get_impl(ev));
 }
 
 template <class KernelName, class KernelType>
 inline void handler::single_task(KernelType const& kernel) {
-#if !CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME
-    (void)kernel;
-    std::terminate();
-#else
-    constexpr char const* type_name = __builtin_sycl_unique_stable_name(KernelType);
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<KernelType>, KernelName>;
 
-    auto const type_len = std::strlen(type_name);
-    auto const name_len = 3 + type_len;
-    auto* name = reinterpret_cast<char*>(alloca(name_len + 1));
-    memcpy(name, "_s_", 3);
-    memcpy(name + 3, type_name, type_len);
-    name[name_len] = '\0';
-
-    auto const h = detail::fnv1a(name, name_len);
-    impl_->single_task(name, h);
-
-    if constexpr (detail::has_bind_ops_v<KernelType, handler>) {
-        KernelType::__do_binds(*this, kernel);
-    }
-
-#    ifdef __SYCL_DEVICE_ONLY__
-    // Dummy invocation is required to keep the function body in the AST.
-    (void)kernel();
-#    endif
-#endif
+    single_task_<Name>(kernel);
 }
 
 template <class KernelName, int Dimensions, class KernelType>
-inline void handler::parallel_for(nd_range<Dimensions> const& ndr, KernelType const& kernel) {
-#if !CHARM_SYCL_HAS_SYCL_UNIQUE_STABLE_NAME
-    (void)ndr;
-    (void)kernel;
-    std::terminate();
-#else
-    constexpr char const* type_name = __builtin_sycl_unique_stable_name(KernelType);
-
-    auto const type_len = std::strlen(type_name);
-    auto const name_len = 3 + type_len;
-    auto* name = reinterpret_cast<char*>(alloca(name_len + 1));
-    memcpy(name, "_s_", 3);
-    memcpy(name + 3, type_name, type_len);
-    name[name_len] = '\0';
-
-    auto const h = detail::fnv1a(name, name_len);
-    impl_->parallel_for(detail::extend(ndr), name, h);
-
-    if constexpr (detail::has_bind_ops_v<KernelType, handler>) {
-        KernelType::__do_binds(*this, kernel);
-    }
-
-#    ifdef __SYCL_DEVICE_ONLY__
-    // Dummy invocations are required to keep the function body in the AST.
-    (void)kernel(detail::make_nd_item<Dimensions>());
-#    endif
+inline void handler::parallel_for_(range<Dimensions> const& range, KernelType const& kernel) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
 #endif
+
+    using Name = std::remove_cvref_t<KernelName>;
+    size_t name_len;
+    auto const* name = runtime::__charm_sycl_kernel_name<Name>(name_len);
+
+    auto const h = detail::fnv1a(name, name_len + 3);
+    impl_->parallel_for(detail::extend(range), name, h);
+
+    do_bind<Name>(kernel);
+}
+
+template <class KernelName, int Dimensions, class KernelType>
+inline void handler::parallel_for_(nd_range<Dimensions> const& range,
+                                   KernelType const& kernel) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+
+    using Name = std::remove_cvref_t<KernelName>;
+    size_t name_len;
+    auto const* name = runtime::__charm_sycl_kernel_name<Name>(name_len);
+
+    auto const h = detail::fnv1a(name, name_len + 3);
+    impl_->parallel_for(detail::extend(range), name, h);
+
+    do_bind<Name>(kernel);
+}
+
+template <class KernelName, class KernelType>
+inline void handler::single_task_(KernelType const& kernel) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+
+    using Name = std::remove_cvref_t<KernelName>;
+    size_t name_len;
+    auto const* name = runtime::__charm_sycl_kernel_name<Name>(name_len);
+
+    auto const h = detail::fnv1a(name, name_len + 3);
+
+    impl_->single_task(name, h);
+
+    do_bind<Name>(kernel);
+}
+
+namespace detail {
+template <class F, class Head, class... Tail>
+void reverse(F f, Head&& head, Tail&&... tail) {
+    if constexpr (sizeof...(Tail) == 0) {
+        f(std::forward<Head>(head));
+    } else {
+        reverse(
+            [&](auto&&... rtail) {
+                f(std::forward<decltype(rtail)>(rtail)..., std::forward<Head>(head));
+            },
+            std::forward<Tail>(tail)...);
+    }
+}
+}  // namespace detail
+
+template <class KernelName, int Dimensions, class... Rest>
+void handler::parallel_for(range<Dimensions> const& range, Rest&&... rest) {
+    using Args = std::tuple<std::remove_reference_t<std::remove_cv_t<Rest>>...>;
+
+    if constexpr (std::tuple_size_v<Args> == 1) {
+        //* parallel_for(range, kernel)
+        parallel_for_1<KernelName>(range, rest...);
+    } else {
+        using Second = std::tuple_element_t<0, Args>;
+        if constexpr (std::is_same_v<Second, id<1>> || std::is_same_v<Second, id<2>> ||
+                      std::is_same_v<Second, id<3>>) {
+            //* parallel_for(range, offset, kernel)
+            parallel_for_2<KernelName>(range, rest...);
+        } else {
+            //* parallel_for(range, reducer..., kernel)
+            detail::reverse(
+                [&](auto&& fn, auto&&... reversed) {
+                    detail::reverse(
+                        [&](auto&&... reducers) {
+                            parallel_for_reduce<KernelName>(
+                                range, fn, std::make_index_sequence<sizeof...(reducers)>(),
+                                reducers...);
+                        },
+                        std::forward<decltype(reversed)>(reversed)...);
+                },
+                std::forward<Rest>(rest)...);
+        }
+    }
+}
+
+template <class KernelName, int Dimensions, class KernelType>
+void handler::parallel_for_1(range<Dimensions> const& range, KernelType& fn) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+    static_assert(Dimensions == 1 || Dimensions == 2 || Dimensions == 3);
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<KernelType>, KernelName>;
+
+    if constexpr (Dimensions == 1) {
+        parallel_for_<Name>(range, [fn, range0 = range[0]]() {
+            sycl::range<1> r(range0);
+
+            for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                     runtime::__charm_sycl_parallel_iter3_begin();
+                 runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                 i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                runtime::__charm_sycl_kernel(&fn);
+
+                fn(detail::make_item(r, sycl::id<1>(i)));
+            }
+        });
+    } else if constexpr (Dimensions == 2) {
+        parallel_for_<Name>(range, [fn, range1 = range[1], range0 = range[0]]() {
+            sycl::range<2> r(range0, range1);
+
+            for (size_t j [[clang::annotate("charm_sycl_parallel_for 2")]] =
+                     runtime::__charm_sycl_parallel_iter2_begin();
+                 runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                 j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                         runtime::__charm_sycl_parallel_iter3_begin();
+                     runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                     i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                    runtime::__charm_sycl_kernel(&fn);
+
+                    fn(detail::make_item(r, sycl::id<2>(i, j)));
+                }
+            }
+        });
+    } else {
+        parallel_for_<Name>(
+            range, [fn, range2 = range[2], range1 = range[1], range0 = range[0]]() {
+                sycl::range<3> r(range0, range1, range2);
+
+                for (size_t k [[clang::annotate("charm_sycl_parallel_for 1")]] =
+                         runtime::__charm_sycl_parallel_iter1_begin();
+                     runtime::__charm_sycl_parallel_iter1_cond(k, range2);
+                     k = runtime::__charm_sycl_parallel_iter1_step(k)) {
+                    for (size_t j [[clang::annotate("charm_sycl_parallel_for 2")]] =
+                             runtime::__charm_sycl_parallel_iter2_begin();
+                         runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                         j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                        for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                                 runtime::__charm_sycl_parallel_iter3_begin();
+                             runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                             i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                            runtime::__charm_sycl_kernel(&fn);
+
+                            fn(detail::make_item(r, sycl::id<3>(i, j, k)));
+                        }
+                    }
+                }
+            });
+    }
+}
+
+template <class KernelName, int Dimensions, class KernelType>
+void handler::parallel_for_2(range<Dimensions> const& range, id<Dimensions> const& offset,
+                             KernelType& fn) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+    static_assert(Dimensions == 1 || Dimensions == 2 || Dimensions == 3);
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<KernelType>, KernelName>;
+
+    if constexpr (Dimensions == 1) {
+        parallel_for_<Name>(range, [fn, offset0 = offset[0], range0 = range[0]]() {
+            sycl::range<1> r(range0);
+
+            for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                     runtime::__charm_sycl_parallel_iter3_begin();
+                 runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                 i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                runtime::__charm_sycl_kernel(&fn);
+
+                fn(detail::make_item(r, sycl::id<1>(offset0 + i)));
+            }
+        });
+    } else if constexpr (Dimensions == 2) {
+        parallel_for_<Name>(range, [fn, offset0 = offset[0], offset1 = offset[1],
+                                    range1 = range[1], range0 = range[0]]() {
+            sycl::range<2> r(range0, range1);
+
+            for (size_t j [[clang::annotate("charm_sycl_parallel_for 2")]] =
+                     runtime::__charm_sycl_parallel_iter2_begin();
+                 runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                 j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                         runtime::__charm_sycl_parallel_iter3_begin();
+                     runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                     i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                    runtime::__charm_sycl_kernel(&fn);
+
+                    fn(detail::make_item(r, sycl::id<2>(offset0 + i, offset1 + j)));
+                }
+            }
+        });
+    } else {
+        parallel_for_<Name>(
+            range, [fn, offset0 = offset[0], offset1 = offset[1], offset2 = offset[2],
+                    range2 = range[2], range1 = range[1], range0 = range[0]]() {
+                sycl::range<3> r(range0, range1, range2);
+
+                for (size_t k [[clang::annotate("charm_sycl_parallel_for 1")]] =
+                         runtime::__charm_sycl_parallel_iter1_begin();
+                     runtime::__charm_sycl_parallel_iter1_cond(k, range2);
+                     k = runtime::__charm_sycl_parallel_iter1_step(k)) {
+                    for (size_t j [[clang::annotate("charm_sycl_parallel_for 2")]] =
+                             runtime::__charm_sycl_parallel_iter2_begin();
+                         runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                         j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                        for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                                 runtime::__charm_sycl_parallel_iter3_begin();
+                             runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                             i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                            runtime::__charm_sycl_kernel(&fn);
+
+                            fn(detail::make_item(
+                                r, sycl::id<3>(offset0 + i, offset1 + j, offset2 + k)));
+                        }
+                    }
+                }
+            });
+    }
+}
+
+template <class KernelName, int Dimensions, class KernelType, size_t... I, class... Reducers>
+void handler::parallel_for_reduce(range<Dimensions> const& range, KernelType& fn,
+                                  std::index_sequence<I...>, Reducers&... reducers) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+    static_assert(Dimensions == 1 || Dimensions == 2 || Dimensions == 3);
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<KernelType>, KernelName>;
+
+    if constexpr (Dimensions == 1) {
+        parallel_for_<Name>(
+            range, [fn, range0 = range[0], ... reducers = reducers.clone()]() mutable {
+                (reducers.initialize(), ...);
+
+                sycl::range<1> r(range0);
+
+                for (size_t i [[clang::annotate("charm_sycl_parallel_for top 3")]] =
+                         runtime::__charm_sycl_parallel_iter3_begin();
+                     runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                     i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                    runtime::__charm_sycl_kernel(&fn);
+
+                    fn(detail::make_item(r, sycl::id<1>(i)), reducers...);
+                }
+
+                bool is_leader = runtime::__charm_sycl_is_reduce_leader_1();
+                (reducers.finalize(is_leader), ...);
+            });
+    } else if constexpr (Dimensions == 2) {
+        parallel_for_<Name>(range, [fn, range1 = range[1], range0 = range[0],
+                                    ... reducers = reducers.clone()]() mutable {
+            (reducers.initialize(), ...);
+
+            sycl::range<2> r(range0, range1);
+
+            for (size_t j [[clang::annotate("charm_sycl_parallel_for top 2")]] =
+                     runtime::__charm_sycl_parallel_iter2_begin();
+                 runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                 j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                         runtime::__charm_sycl_parallel_iter3_begin();
+                     runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                     i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                    runtime::__charm_sycl_kernel(&fn);
+
+                    fn(detail::make_item(r, sycl::id<2>(i, j)), reducers...);
+                }
+            }
+
+            bool is_leader = runtime::__charm_sycl_is_reduce_leader_2();
+            (reducers.finalize(is_leader), ...);
+        });
+    } else {
+        parallel_for_<Name>(range, [fn, range2 = range[2], range1 = range[1], range0 = range[0],
+                                    ... reducers = reducers.clone()]() mutable {
+            (reducers.initialize(), ...);
+
+            sycl::range<3> r(range0, range1, range2);
+
+            for (size_t k [[clang::annotate("charm_sycl_parallel_for top 1")]] =
+                     runtime::__charm_sycl_parallel_iter1_begin();
+                 runtime::__charm_sycl_parallel_iter1_cond(k, range1);
+                 k = runtime::__charm_sycl_parallel_iter1_step(k)) {
+                for (size_t j [[clang::annotate("charm_sycl_parallel_for 2")]] =
+                         runtime::__charm_sycl_parallel_iter2_begin();
+                     runtime::__charm_sycl_parallel_iter2_cond(j, range1);
+                     j = runtime::__charm_sycl_parallel_iter2_step(j)) {
+                    for (size_t i [[clang::annotate("charm_sycl_parallel_for 3")]] =
+                             runtime::__charm_sycl_parallel_iter3_begin();
+                         runtime::__charm_sycl_parallel_iter3_cond(i, range0);
+                         i = runtime::__charm_sycl_parallel_iter3_step(i)) {
+                        runtime::__charm_sycl_kernel(&fn);
+
+                        fn(detail::make_item(r, sycl::id<3>(i, j, k)), reducers...);
+                    }
+                }
+            }
+
+            bool is_leader = runtime::__charm_sycl_is_reduce_leader_2();
+            (reducers.finalize(is_leader), ...);
+        });
+    }
+}
+
+template <class KernelName, class WorkgroupFunctionType, int Dimensions>
+void handler::parallel_for_work_group(range<Dimensions> const& numWorkGroups,
+                                      range<Dimensions> const& workGroupSize,
+                                      WorkgroupFunctionType const& fn) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<WorkgroupFunctionType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<WorkgroupFunctionType>, KernelName>;
+    sycl::nd_range<Dimensions> ndr(numWorkGroups * workGroupSize, workGroupSize);
+
+    if constexpr (Dimensions == 1) {
+        parallel_for_<Name>(ndr, [fn]() {
+            /* scope: wg entry */
+            sycl::range<1> group_range(runtime::__charm_sycl_group_range3());
+            sycl::range<1> local_range(0);
+            sycl::id<1> group_id(runtime::__charm_sycl_group_id3());
+            sycl::id<1> local_id(0);
+
+            sycl::group<1> g(group_range, local_range, group_id, local_id);
+
+            runtime::__charm_sycl_kernel(&fn);
+            fn(g);
+        });
+    } else if constexpr (Dimensions == 2) {
+        parallel_for_<Name>(ndr, [fn]() {
+            /* scope: wg entry */
+            sycl::range<2> group_range(runtime::__charm_sycl_group_range3(),
+                                       runtime::__charm_sycl_group_range2());
+            sycl::range<2> local_range(0, 0);
+            sycl::id<2> group_id(runtime::__charm_sycl_group_id3(),
+                                 runtime::__charm_sycl_group_id2());
+            sycl::id<2> local_id(0, 0);
+
+            sycl::group<2> g(group_range, local_range, group_id, local_id);
+
+            runtime::__charm_sycl_kernel(&fn);
+            fn(g);
+        });
+    } else {
+        parallel_for_<Name>(ndr, [fn]() {
+            /* scope: wg entry */
+            sycl::range<3> group_range(runtime::__charm_sycl_group_range3(),
+                                       runtime::__charm_sycl_group_range2(),
+                                       runtime::__charm_sycl_group_range1());
+            sycl::range<3> local_range(0, 0, 0);
+            sycl::id<3> group_id(runtime::__charm_sycl_group_id3(),
+                                 runtime::__charm_sycl_group_id2(),
+                                 runtime::__charm_sycl_group_id1());
+            sycl::id<3> local_id(0, 0, 0);
+
+            sycl::group<3> g(group_range, local_range, group_id, local_id);
+
+            runtime::__charm_sycl_kernel(&fn);
+            fn(g);
+        });
+    }
+}
+
+template <class KernelName, int Dimensions, class KernelType>
+void handler::parallel_for(nd_range<Dimensions> const& range, KernelType const& fn) {
+    parallel_for_3<KernelName>(range, fn);
+}
+
+template <class KernelName, int Dimensions, class KernelType>
+void handler::parallel_for_3(nd_range<Dimensions> const& range, KernelType const& fn) {
+#ifdef __SYCL_DEVICE_ONLY__
+    static_assert(std::is_trivially_copyable_v<KernelType>,
+                  "The kernel function must be a trivially copyable.");
+#endif
+    using Name = std::conditional_t<std::is_same_v<KernelName, detail::unnamed_kernel>,
+                                    std::remove_cvref_t<KernelType>, KernelName>;
+
+    parallel_for_work_group<Name>(
+        range.get_group_range(), range.get_local_range(), [fn](sycl::group<Dimensions> g) {
+            /* scope: wg */
+            g.parallel_for_work_item([fn](sycl::h_item<Dimensions> h_item) {
+                /* scope: wi */
+                fn(h_item.into_nd_item());
+            });
+        });
 }
 
 template <class SrcT, int SrcDim, access_mode SrcMode, target SrcTgt, class DestT>
@@ -235,28 +495,18 @@ inline event handler::finalize() {
 }
 
 namespace detail {
-
 template <class T>
 auto constexpr has_impl_v = decltype(runtime::impl_access::has_impl(std::declval<T>()))::value;
-
-template <class Obj, class Arg>
-void __bind_arg(Obj& obj, Arg const& arg) {
-    if constexpr (has_impl_v<Arg>) {
-        obj->bind(runtime::impl_access::get_impl(arg));
-    } else if constexpr (std::is_trivially_copyable_v<Arg>) {
-        obj->bind(std::addressof(arg), sizeof(arg));
-    } else {
-        static_assert(not_supported<Arg>, "not a device-copyable type");
-    }
-}
-
 }  // namespace detail
 
 template <class... Args>
 inline void handler::__bind(Args const&... args) {
+    impl_->reserve_binds(sizeof...(Args));
     impl_->begin_binds();
     try {
-        __bind_args(args...);
+        bind_args<true, 0>(args...);
+        impl_->end_pre_binds();
+        bind_args<false, 0>(args...);
     } catch (...) {
         impl_->end_binds();
         throw;
@@ -264,13 +514,74 @@ inline void handler::__bind(Args const&... args) {
     impl_->end_binds();
 }
 
-inline void handler::__bind_args() {}
+template <bool, size_t>
+inline void handler::bind_args() {}
 
-template <class Arg, class... Args>
-inline void handler::__bind_args(Arg const& arg, Args const&... args) {
-    detail::__bind_arg(impl_, arg);
+template <bool Pre, size_t Idx, class Arg, class... Args>
+inline void handler::bind_args(Arg const& arg, Args const&... args) {
+    bind_arg<Pre, Idx>(arg);
+    bind_args<Pre, Idx + 1>(args...);
+}
 
-    __bind_args(args...);
+template <bool Pre, size_t Idx, class Arg>
+inline void handler::bind_arg(Arg const& arg) {
+    if constexpr (detail::has_impl_v<Arg>) {
+        if constexpr (Pre) {
+            impl_->pre_bind(Idx, runtime::impl_access::get_impl(arg));
+        } else {
+            impl_->bind(Idx, runtime::impl_access::get_impl(arg));
+        }
+    } else {
+        if constexpr (Pre) {
+            impl_->pre_bind(Idx, std::addressof(arg), sizeof(arg));
+        } else {
+            impl_->bind(Idx, std::addressof(arg), sizeof(arg));
+        }
+    }
+}
+
+template <class KernelName, class KernelType>
+inline void handler::do_bind(KernelType& fn) {
+#if defined(__SYCL_DEVICE_ONLY__) || !defined(__cham_sycl_kernel_descs_DEFINED)
+    (void)fn;
+    throw std::runtime_error("BUG: no kernel descriptor is found");
+#else
+    static constinit auto const desc = ::__cham_sycl_kernel_descs::get<KernelName>();
+    static constinit auto const accessors = desc.accessors();
+
+    impl_->reserve_binds(accessors.size() + 1);
+    impl_->begin_binds();
+    try {
+        auto* fn_ptr =
+            const_cast<std::add_pointer_t<std::remove_cvref_t<KernelType>>>(std::addressof(fn));
+
+        bind_arg<true, 0>(fn);
+        do_bind_accessors<true, 1, accessors>(fn_ptr);
+        impl_->end_pre_binds();
+        bind_arg<false, 0>(fn);
+        do_bind_accessors<false, 1, accessors>(fn_ptr);
+    } catch (...) {
+        impl_->end_binds();
+        throw;
+    }
+    impl_->end_binds();
+#endif
+}
+
+template <bool Pre, size_t I, auto List, class KernelType>
+inline void handler::do_bind_accessors(KernelType* fn) {
+    if constexpr (!List.empty()) {
+        auto* acc = List.head().interpret(reinterpret_cast<std::byte*>(fn));
+
+        if constexpr (Pre) {
+            acc->into_device();
+        }
+        bind_arg<Pre, I>(*acc);
+
+        if constexpr (List.size() > 1) {
+            do_bind_accessors<Pre, I + 1, List.tail()>(fn);
+        }
+    }
 }
 
 CHARM_SYCL_END_NAMESPACE

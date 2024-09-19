@@ -5,68 +5,52 @@ CHARM_SYCL_BEGIN_NAMESPACE
 namespace runtime::impl {
 
 struct context_impl final : runtime::context {
-    context_impl(std::shared_ptr<runtime::device> const& dev, async_handler asyncHandler,
-                 property_list const*);
+    context_impl(device_ptr const& dev);
 
-    context_impl(std::vector<std::shared_ptr<runtime::device>> const& devList,
-                 async_handler asyncHandler, property_list const*);
+    context_impl(vec_view<device_ptr> const& devList);
 
-    std::shared_ptr<runtime::platform> get_platform() override;
+    platform_ptr get_platform() override;
 
-    std::vector<std::shared_ptr<runtime::device>> const& get_devices() override;
-
-    async_handler& get_async_handler() override;
+    vec<device_ptr> const& get_devices() override;
 
 private:
-    std::shared_ptr<runtime::platform> check_platform();
+    platform_ptr check_platform();
 
-    std::vector<std::shared_ptr<runtime::device>> devs_;
-    async_handler ah_;
-    std::shared_ptr<runtime::platform> platform_;
+    vec<device_ptr> devs_;
+    platform_ptr platform_;
 };
 
-context_impl::context_impl(std::shared_ptr<runtime::device> const& dev,
-                           async_handler asyncHandler, property_list const*)
-    : devs_({dev}), ah_(asyncHandler), platform_(check_platform()) {}
+context_impl::context_impl(device_ptr const& dev) : devs_({dev}), platform_(check_platform()) {}
 
-context_impl::context_impl(std::vector<std::shared_ptr<runtime::device>> const& devList,
-                           async_handler asyncHandler, property_list const*)
-    : devs_(devList), ah_(asyncHandler), platform_(check_platform()) {}
+context_impl::context_impl(vec_view<device_ptr> const& devList)
+    : devs_(devList.data(), devList.size()), platform_(check_platform()) {}
 
-std::shared_ptr<runtime::platform> context_impl::get_platform() {
+platform_ptr context_impl::get_platform() {
     return platform_;
 }
 
-std::vector<std::shared_ptr<runtime::device>> const& context_impl::get_devices() {
+vec<device_ptr> const& context_impl::get_devices() {
     return devs_;
 }
 
-async_handler& context_impl::get_async_handler() {
-    return ah_;
-}
-
-std::shared_ptr<runtime::platform> context_impl::check_platform() {
+platform_ptr context_impl::check_platform() {
     if (devs_.empty()) {
         throw std::runtime_error("No devices found");
     }
 
-    return devs_.at(0)->get_platform();
+    return devs_[0]->get_platform();
 }
 
 }  // namespace runtime::impl
 
 namespace runtime {
 
-std::shared_ptr<context> make_context(std::shared_ptr<runtime::device> const& dev,
-                                      async_handler asyncHandler,
-                                      property_list const* propList) {
-    return std::make_shared<impl::context_impl>(dev, asyncHandler, propList);
+intrusive_ptr<context> make_context(device_ptr const& dev) {
+    return make_intrusive<impl::context_impl>(dev);
 }
 
-std::shared_ptr<context> make_context(std::vector<std::shared_ptr<device>> const& devList,
-                                      async_handler asyncHandler,
-                                      property_list const* propList) {
-    return std::make_shared<impl::context_impl>(devList, asyncHandler, propList);
+intrusive_ptr<context> make_context(vec_view<intrusive_ptr<device>> const& devList) {
+    return make_intrusive<impl::context_impl>(devList);
 }
 
 }  // namespace runtime

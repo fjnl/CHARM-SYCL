@@ -1,10 +1,9 @@
 #pragma once
 
 #include <stdlib.h>
-#include <charm/sycl/fwd.hpp>
 #include <charm/sycl/group.hpp>
-#include <charm/sycl/id.hpp>
-#include <charm/sycl/range.hpp>
+//
+#include <charm/sycl.hpp>
 
 CHARM_SYCL_BEGIN_NAMESPACE
 
@@ -131,6 +130,8 @@ private:
     template <int D>
     friend nd_item<D> detail::make_nd_item();
 
+    friend struct group<Dimensions>;
+
     explicit nd_item(group<Dimensions> const& g) : group_(g) {}
 
     static CHARM_SYCL_INLINE inline id<Dimensions> compute_global_id(
@@ -153,16 +154,24 @@ namespace detail {
 template <int D>
 sycl::nd_item<D> make_nd_item() {
     if constexpr (D == 1) {
-        group<D> g(sycl::range<D>{1}, sycl::range<D>{1}, sycl::id<D>{}, sycl::id<D>{});
+        group<D> g(sycl::range<D>{1}, sycl::range<D>{1}, sycl::id<D>{}, sycl::id<D>{}, nullptr);
         return sycl::nd_item<D>(g);
     } else if constexpr (D == 2) {
-        group<D> g(sycl::range<D>{1, 1}, sycl::range<D>{1, 1}, sycl::id<D>{}, sycl::id<D>{});
+        group<D> g(sycl::range<D>{1, 1}, sycl::range<D>{1, 1}, sycl::id<D>{}, sycl::id<D>{},
+                   nullptr);
         return sycl::nd_item<D>(g);
     } else {
         group<D> g(sycl::range<D>{1, 1, 1}, sycl::range<D>{1, 1, 1}, sycl::id<D>{},
-                   sycl::id<D>{});
+                   sycl::id<D>{}, nullptr);
         return sycl::nd_item<D>(g);
     }
+}
+
+template <int D>
+sycl::nd_item<D> make_nd_item(range<D> const& group_range, range<D> const& local_range,
+                              id<D> const& group_id, id<D> const& local_id, void* ctx) {
+    group<D> g(group_range, local_range, group_id, local_id, ctx);
+    return sycl::nd_item<D>(g);
 }
 
 }  // namespace detail

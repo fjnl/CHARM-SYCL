@@ -1,24 +1,27 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEST_CASE("nd_item", "") {
+int main() {
     sycl::queue q;
-    std::vector<int> data(16, -1);
 
-    {
-        sycl::buffer<int, 1> x(data.data(), {data.size()});
+    "nd_item"_test = [q]() mutable {
+        std::vector<int> data(192, -1);
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            auto res = x.get_access(h);
+        {
+            sycl::buffer<int, 1> x(data.data(), {data.size()});
 
-            sycl::nd_range<2> ndr(sycl::range(4, 4), sycl::range(2, 2));
+            auto ev = q.submit([&](sycl::handler& h) {
+                auto res = x.get_access(h);
 
-            h.parallel_for(ndr, [=](sycl::nd_item<2> const& item) {
-                res[item.get_global_linear_id()] = item.get_global_linear_id();
+                sycl::nd_range<3> ndr(sycl::range(4, 6, 8), sycl::range(2, 3, 4));
+
+                h.parallel_for(ndr, [=](sycl::nd_item<3> const& item) {
+                    res[item.get_global_linear_id()] = item.get_global_linear_id();
+                });
             });
-        });
-    }
+        }
 
-    for (int i = 0; i < 16; i++) {
-        REQUIRE(data.at(i) == i);
-    }
+        for (size_t i = 0; i < data.size(); i++) {
+            expect(_i(data.at(i)) == i) << "i=" << i;
+        }
+    };
 }

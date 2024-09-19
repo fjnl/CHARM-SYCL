@@ -5,7 +5,7 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime {
 
-struct accessor {
+struct accessor : refcnt_base {
     virtual ~accessor() = default;
 
     virtual range<3> get_range() const = 0;
@@ -14,10 +14,10 @@ struct accessor {
 
     virtual void* get_pointer() = 0;
 
-    virtual std::shared_ptr<buffer> get_buffer() = 0;
+    virtual buffer_ptr get_buffer() = 0;
 };
 
-struct host_accessor {
+struct host_accessor : refcnt_base {
     virtual ~host_accessor() = default;
 
     virtual range<3> get_range() const = 0;
@@ -26,7 +26,7 @@ struct host_accessor {
 
     virtual void* get_pointer() = 0;
 
-    virtual std::shared_ptr<buffer> get_buffer() = 0;
+    virtual buffer_ptr get_buffer() = 0;
 };
 
 }  // namespace runtime

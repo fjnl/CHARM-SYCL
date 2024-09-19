@@ -33,7 +33,7 @@ struct host_accessor_impl {
 private:
     range<Dimensions> range_;
     id<Dimensions> offset_;
-    std::shared_ptr<buffer_impl<DataT, Dimensions>> buffer_;
+    intrusive_ptr<buffer_impl<DataT, Dimensions>> buffer_;
 };
 
 }  // namespace runtime

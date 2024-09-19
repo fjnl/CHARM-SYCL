@@ -1,0 +1,10 @@
+[package]
+name = "cuda-ifgen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+ifgen.workspace = true

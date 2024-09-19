@@ -68,7 +68,12 @@ void get_kernels(xcml::xcml_program_node_ptr prg) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+#ifdef IMPLEMENT_MAIN
+int main(int argc, char** argv)
+#else
+int get_main(int argc, char** argv)
+#endif
+{
     try {
         cxxopts::Options options(argv[0]);
         options.add_options()("input", "input file",

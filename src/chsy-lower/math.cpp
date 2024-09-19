@@ -1,110 +1,59 @@
 #include "math.hpp"
-#include <unordered_set>
+#include <string>
 #include <fmt/format.h>
-#include <xcml.hpp>
-#include <xcml_recusive_visitor.hpp>
+#include <xcml_utils.hpp>
 
-namespace {
+namespace u = xcml::utils;
 
-struct transform_math_functions_visitor_impl final
-    : transform_math_functions_visitor,
-      xcml::recursive_visitor<transform_math_functions_visitor_impl> {
-    explicit transform_math_functions_visitor_impl(math_transfomration_table const& t)
-        : t_(t) {}
+void add_replace_math_func(replace_builtin_map_t& map, char const* name, char const* float_,
+                           char const* double_) {
+    map[fmt::format("__charm_sycl_{}_f", name)] =
+        [float_ = std::string(float_)](xcml::function_call_ptr const& node) {
+            node->function = xcml::utils::make_func_addr(float_);
+            return node;
+        };
 
-    xcml::xcml_program_node_ptr apply(xcml::xcml_program_node_ptr const& prg) override {
-        return (*static_cast<xcml::recursive_visitor<transform_math_functions_visitor_impl>*>(
-            this))(prg);
-    }
-
-    xcml::node_ptr visit_runtime_func_decl(xcml::runtime_func_decl_ptr const& node,
-                                           scope_ref scope) {
-        using namespace xcml::utils;
-
-        if (first_) {
-            for (auto const& filename : t_.includes) {
-                auto const inc = xcml::new_cpp_include();
-                inc->name = filename;
-                root()->global_declarations.push_back(inc);
-            }
-
-            first_ = false;
-        }
-
-        auto const& ft = lookup(scope, node->name).function_type();
-        auto const& kind = node->func_kind;
-        auto const fd = make_fd(root(), ft, node->name, true);
-
-        fdecl_opts opts;
-        opts.is_force_inline = true;
-        opts.no_add_sym = true;
-        add_fdecl(root(), ft, node->name, opts);
-
-        if (t_.is_cuda) {
-            auto host = xcml::new_cuda_attribute();
-            host->value = "__host__";
-            auto device = xcml::new_cuda_attribute();
-            device->value = "__device__";
-
-            ft->cuda_attrs.push_back(host);
-            ft->cuda_attrs.push_back(device);
-        }
-
-#define CALL_GEN(name)                          \
-    if (kind == #name && t_.name) {             \
-        if (t_.name(ft->return_type, ft, fd)) { \
-            return fd;                          \
-        }                                       \
-    }
-
-        CALL_GEN(cos)
-        CALL_GEN(exp)
-        CALL_GEN(sin)
-        CALL_GEN(sqrt)
-        CALL_GEN(tan)
-        CALL_GEN(hypot)
-        CALL_GEN(fdim)
-        CALL_GEN(min)
-        CALL_GEN(fmin)
-        CALL_GEN(max)
-        CALL_GEN(fmax)
-        CALL_GEN(clamp)
-        CALL_GEN(length)
-        CALL_GEN(fabs)
-        CALL_GEN(cbrt)
-
-#undef CALL_GEN
-
-        throw std::runtime_error(
-            fmt::format("Runtime function `{} {}` is not supported\n", ft->return_type, kind));
-    }
-
-private:
-    math_transfomration_table const& t_;
-    bool first_ = true;
-};
-
-}  // namespace
-
-std::unique_ptr<transform_math_functions_visitor> make_transform_math_functions_visitor(
-    math_transfomration_table const& t) {
-    return std::make_unique<transform_math_functions_visitor_impl>(t);
+    map[fmt::format("__charm_sycl_{}_d", name)] =
+        [double_ = std::string(double_)](xcml::function_call_ptr const& node) {
+            node->function = xcml::utils::make_func_addr(double_);
+            return node;
+        };
 }
 
-bool forward_to_other_function_impl(std::string_view func_name,
-                                    xcml::function_definition_ptr const& fd) {
-    using namespace xcml::utils;
-
-    auto const fa = make_func_addr(func_name);
-
-    std::vector<xcml::expr_ptr> args;
-    for (auto const& p : fd->params) {
-        auto param = xcml::param_node::dyncast(p);
-
-        args.push_back(make_var_ref(param->name));
+void add_common_replace_math_funcs(replace_builtin_map_t& map,
+                                   implement_builtin_map_t& implement) {
+    for (char const* fn : {
+             "acos",  "acosh",    "asin",      "asinh",  "atan",  "atan2", "atanh", "cbrt",
+             "ceil",  "cos",      "cosh",      "erf",    "erfc",  "exp",   "exp10", "exp2",
+             "expm1", "fabs",     "floor",     "lgamma", "log10", "log1p", "log2",  "logb",
+             "rint",  "round",    "sin",       "sinh",   "sqrt",  "tan",   "tanh",  "tgamma",
+             "trunc", "copysign", "fdim",      "fmin",   "fmax",  "fmod",  "hypot", "nextafter",
+             "pow",   "powr",     "remainder", "remquo",
+         }) {
+        auto const f = fmt::format("{}f", fn);
+        add_replace_math_func(map, fn, f.c_str(), fn);
     }
 
-    auto const call = make_call(fa, args.begin(), args.end());
-    push_stmt(fd->body, make_return(call));
-    return true;
+    for (char const* fn : {"max", "min"}) {
+        for (char const sig : {'c', 'h', 's', 't', 'i', 'j', 'l', 'm', 'x', 'y'}) {
+            implement[fmt::format("__charm_sycl_{}_{}", fn, sig)] =
+                [fn](xcml::xcml_program_node_ptr const&, xcml::function_decl_ptr const&,
+                     xcml::function_type_ptr const&, xcml::function_definition_ptr const& fd) {
+                    auto x = u::make_var_ref(xcml::param_node::dyncast(fd->params.at(0))->name);
+                    auto y = u::make_var_ref(xcml::param_node::dyncast(fd->params.at(1))->name);
+                    auto cond = u::new_cond_expr();
+
+                    cond->cond = u::log_lt_expr(x, y);
+                    if (strcmp(fn, "max") == 0) {
+                        cond->true_ = y;
+                        cond->false_ = x;
+                    } else {
+                        cond->true_ = x;
+                        cond->false_ = y;
+                    }
+
+                    u::push_stmt(fd->body, u::make_return(cond));
+                };
+        }
+    }
 }

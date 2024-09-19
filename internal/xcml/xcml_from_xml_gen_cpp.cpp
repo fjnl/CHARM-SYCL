@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
 
         void from_XML(pugi::xml_node& node, std::shared_ptr<expr_node>& obj);
 
-        void from_XML(pugi::xml_node& node, std::shared_ptr<stmt_node>& obj);
+        // void from_XML(pugi::xml_node& node, std::shared_ptr<stmt_node>& obj);
 
         template <class T>
         void for_each(std::vector<std::shared_ptr<T>>& vec, pugi::xml_node const& node);
@@ -351,8 +351,8 @@ int main(int argc, char** argv) {
         void from_XML(pugi::xml_node& node, std::shared_ptr<expr_node>& obj)
         { obj = make_obj<expr_node>(node); }
 
-        void from_XML(pugi::xml_node& node, std::shared_ptr<stmt_node>& obj)
-        { obj = make_obj<stmt_node>(node); }
+        // void from_XML(pugi::xml_node& node, std::shared_ptr<stmt_node>& obj)
+        // { obj = make_obj<stmt_node>(node); }
     )");
 
     gen_factory(specs, xml_specs);

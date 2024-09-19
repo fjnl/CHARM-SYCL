@@ -5,6 +5,33 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace detail {
 
+struct device_accessor_size {
+    device_accessor_size() : size0(0), size1(0), size2(0), offset0(0), offset1(0), offset2(0) {}
+
+    size_t size0, size1, size2;
+    size_t offset0, offset1, offset2;
+};
+
+// Check the memory layout requirements
+static_assert(std::is_trivially_copyable_v<device_accessor_size>,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(std::is_standard_layout_v<device_accessor_size>,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(sizeof(device_accessor_size) == sizeof(size_t) * 6,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, size0) == 0,
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, size1) == 1 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, size2) == 2 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, offset0) == 3 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, offset1) == 4 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+static_assert(offsetof(device_accessor_size, offset2) == 5 * sizeof(size_t),
+              "Layout must match with the internal struct in the runtime library.");
+
 template <class DataT, int Dimensions, access_mode AccessMode>
 struct device_accessor {
     using value_type = std::conditional_t<AccessMode == access_mode::read, const DataT, DataT>;
@@ -17,6 +44,16 @@ struct device_accessor {
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using difference_type = typename std::iterator_traits<iterator>::difference_type;
     using size_type = size_t;
+
+    device_accessor()
+#ifdef __SYCL_DEVICE_ONLY__
+        : ptr(nullptr),
+          sz()
+#else
+        : impl_()
+#endif
+    {
+    }
 
     /* Available only when: (Dimensions > 0) */
     template <typename AllocatorT, int _Dim = Dimensions, class = std::enable_if<(_Dim > 0)>>
@@ -158,50 +195,78 @@ struct device_accessor {
     inline CHARM_SYCL_INLINE range<Dimensions> get_range() const {
 #ifdef __SYCL_DEVICE_ONLY__
         if constexpr (Dimensions == 1) {
-            return range<Dimensions>(this->size2);
+            return range<Dimensions>(sz.size2);
         } else if constexpr (Dimensions == 2) {
-            return range<Dimensions>(this->size1, this->size2);
+            return range<Dimensions>(sz.size1, sz.size2);
         } else {
-            return range<Dimensions>(this->size0, this->size1, this->size2);
+            return range<Dimensions>(sz.size0, sz.size1, sz.size2);
         }
 #else
-        return detail::shrink<Dimensions>(this->impl_->get_range());
+        if (this->impl_) {
+            return detail::shrink<Dimensions>(this->impl_->get_range());
+        }
+        return detail::shrink<Dimensions>(range<3>(0, 0, 0));
 #endif
     }
 
     inline CHARM_SYCL_INLINE id<Dimensions> get_offset() const {
 #ifdef __SYCL_DEVICE_ONLY__
         if constexpr (Dimensions == 1) {
-            return id<Dimensions>(this->offset2);
+            return id<Dimensions>(sz.offset2);
         } else if constexpr (Dimensions == 2) {
-            return id<Dimensions>(this->offset1, this->offset2);
+            return id<Dimensions>(sz.offset1, sz.offset2);
         } else {
-            return id<Dimensions>(this->offset0, this->offset1, this->offset2);
+            return id<Dimensions>(sz.offset0, sz.offset1, sz.offset2);
         }
 #else
-        return detail::shrink<Dimensions>(this->impl_->get_offset());
+        if (this->impl_) {
+            return detail::shrink<Dimensions>(this->impl_->get_offset());
+        }
+        return detail::shrink<Dimensions>(id<3>(0, 0, 0));
 #endif
     }
 
     inline CHARM_SYCL_INLINE pointer_type get_pointer() const noexcept {
 #ifdef __SYCL_DEVICE_ONLY__
-        return this->ptr;
+        return reinterpret_cast<pointer_type>(ptr);
 #else
         return reinterpret_cast<pointer_type>(this->impl_->get_pointer());
 #endif
     }
 
 private:
+    friend struct sycl::handler;
     friend struct runtime::impl_access;
 
-#ifdef __SYCL_DEVICE_ONLY__
-    mutable pointer_type ptr;
-    size_t size0, size1, size2;
-    size_t offset0, offset1, offset2;
-#else
-    std::shared_ptr<runtime::accessor> impl_;
+#ifndef __SYCL_DEVICE_ONLY__
+    void into_device() {
+        auto const offset = this->impl_->get_offset();
+        sz.offset0 = offset[0];
+        sz.offset1 = offset[1];
+        sz.offset2 = offset[2];
+
+        auto const size = this->impl_->get_buffer()->get_range();
+        sz.size0 = size[0];
+        sz.size1 = size[1];
+        sz.size2 = size[2];
+    }
 #endif
+
+#ifdef __SYCL_DEVICE_ONLY__
+    void* ptr;
+#else
+    runtime::accessor_ptr impl_;
+#endif
+    device_accessor_size sz;
 };
+
+static_assert(sizeof(accessor<int, 1, access_mode::read_write>) ==
+              sizeof(void*) + sizeof(size_t) * 6);
+#ifdef __SYCL_DEVICE_ONLY__
+static_assert(std::is_standard_layout_v<accessor<int, 1, access_mode::read_write>>);
+static_assert(std::is_trivially_copyable_v<accessor<int, 1, access_mode::read_write>>);
+static_assert(std::is_trivially_destructible_v<accessor<int, 1, access_mode::read_write>>);
+#endif
 
 }  // namespace detail
 

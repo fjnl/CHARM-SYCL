@@ -5,8 +5,8 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime::impl {
 
-std::shared_ptr<runtime::event> make_event(std::shared_ptr<dep::event> const& ev) {
-    return ev;
+intrusive_ptr<runtime::event> make_event(std::unique_ptr<dep::event>&& ev) {
+    return intrusive_ptr<runtime::event>(std::move(ev));
 }
 
 }  // namespace runtime::impl

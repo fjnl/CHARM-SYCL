@@ -1,3 +1,4 @@
+#include <xcml_utils.hpp>
 #include "xcml_recusive_visitor.hpp"
 
 namespace {
@@ -5,7 +6,29 @@ namespace {
 struct compute_type_visitor : xcml::visitor<compute_type_visitor, xcml::type_ptr> {
     explicit compute_type_visitor(xcml::symbol_scope const& scope) : scope_(scope) {}
 
-    xcml::type_ptr visit_var_ref(xcml::var_ref_ptr node) {
+    xcml::type_ptr visit_member_ref(xcml::member_ref_ptr const& node) {
+        auto ty = visit(node->value);
+
+        for (;;) {
+            if (auto pt = xcml::pointer_type::dyncast(ty)) {
+                ty = scope_.base_of(pt);
+                continue;
+            }
+
+            break;
+        }
+
+        auto st = xcml::struct_type::dyncast(ty);
+
+        for (auto const& sym : st->symbols) {
+            if (sym->name == node->member) {
+                return scope_.type_of(sym);
+            }
+        }
+        return nullptr;
+    }
+
+    xcml::type_ptr visit_var_ref(xcml::var_ref_ptr const& node) {
         auto res = scope_.lookup(node->name);
         return res.type;
     }
@@ -126,45 +149,6 @@ type_ptr const& recursive_visitor_base::get_basic_type(std::string const& name) 
     return type_map_.at(name);
 }
 
-type_ptr recursive_visitor_base::rts_accessor_type() {
-    static char const* NAME = "_sT__accessor";
-
-    for (auto const& sym : root_->global_symbols) {
-        if (sym->name == NAME) {
-            return type_map_.at(sym->type);
-        }
-    }
-
-    std::string type = xstruct_type();
-    auto const st = new_struct_type();
-
-    st->type = type;
-
-    for (int dim = 0; dim < 3; ++dim) {
-        auto sym = new_symbol_id();
-        sym->type = "unsigned_long";
-        sym->name = fmt::format("size{}", dim);
-        st->symbols.push_back(sym);
-    }
-    for (int dim = 0; dim < 3; ++dim) {
-        auto sym = new_symbol_id();
-        sym->type = "unsigned_long";
-        sym->name = fmt::format("offset{}", dim);
-        st->symbols.push_back(sym);
-    }
-
-    root_->type_table.push_back(st);
-
-    utils::add_sym(root_, type, storage_class::tagname, NAME);
-    add_type(st);
-
-    return st;
-}
-
-type_ptr recursive_visitor_base::rts_accessor_ptr_type() {
-    return get_pointer_type(rts_accessor_type());
-}
-
 void recursive_visitor_base::add_type(std::shared_ptr<type_node> const& node) {
     auto const [_, inserted] = type_map_.insert_or_assign(node->type, node);
     if (!inserted) {
@@ -173,9 +157,14 @@ void recursive_visitor_base::add_type(std::shared_ptr<type_node> const& node) {
     }
 }
 
+xcml::type_ptr recursive_visitor_base::compute_type2(expr_ptr const& expr,
+                                                     symbol_scope const& scope) {
+    return compute_type_visitor(scope).visit(expr);
+}
+
 std::string recursive_visitor_base::compute_type(expr_ptr const& expr,
                                                  symbol_scope const& scope) {
-    return compute_type_visitor(scope).visit(expr)->type;
+    return compute_type2(expr, scope)->type;
 }
 
 type_ptr const& recursive_visitor_base::get_type(std::string const& name) const {

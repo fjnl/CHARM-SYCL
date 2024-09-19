@@ -1,5 +1,9 @@
 #pragma once
-#include <charm/sycl.hpp>
+
+#include <vector>
+#include <charm/sycl/config.hpp>
+#include <charm/sycl/access_mode.hpp>
+#include <charm/sycl/runtime/intrusive_ptr.hpp>
 
 CHARM_SYCL_BEGIN_NAMESPACE
 
@@ -19,12 +23,12 @@ struct impl_access {
     }
 
     template <class T, class U>
-    static T from_impl(std::shared_ptr<U> const& impl) {
+    static T from_impl(intrusive_ptr<U> const& impl) {
         return T(impl);
     }
 
     template <class T, class U>
-    static std::vector<T> from_impl(std::vector<std::shared_ptr<U>> const& impls) {
+    static std::vector<T> from_impl(vec<intrusive_ptr<U>> const& impls) {
         std::vector<T> ret;
         for (auto const& impl : impls) {
             ret.push_back(from_impl<T>(impl));
@@ -36,6 +40,16 @@ struct impl_access {
     static auto has_impl(T&& x) -> decltype(std::addressof(x.impl_), std::true_type());
 
     static auto has_impl(...) -> std::false_type;
+
+    template <class T, class... Args>
+    static auto make(Args&&... args) {
+        return T(std::forward<Args>(args)...);
+    }
+
+    template <class T, class... Args>
+    static decltype(auto) get_queue(T& obj) {
+        return obj.q_;
+    }
 };
 
 }  // namespace runtime
@@ -111,6 +125,20 @@ struct item;
 template <int Dimensions = 1>
 struct nd_item;
 
+template <int Dimensions>
+struct group;
+
+template <int Dimensions>
+struct h_item;
+
+namespace detail {
+template <class DataT, int NumElements>
+inline constexpr size_t vec_size = sizeof(DataT) * (NumElements == 3 ? 4 : NumElements);
+}  // namespace detail
+
+template <class DataT, int NumElements>
+struct alignas(detail::vec_size<DataT, NumElements>) vec;
+
 namespace detail {
 struct unnamed_kernel;
 }
@@ -149,7 +177,7 @@ template <class T>
 inline constexpr bool is_group_v = is_group<T>::value;
 
 template <class Group>
-void group_barrier(Group const& g, memory_scope fence_scope = Group::fence_scope);
+void group_barrier(Group& g, memory_scope fence_scope = Group::fence_scope);
 
 namespace detail {
 
@@ -180,9 +208,13 @@ inline auto linear_range(Range const& range);
 template <int D>
 sycl::nd_item<D> make_nd_item();
 
+template <int D>
+sycl::nd_item<D> make_nd_item(range<D> const& group_range, range<D> const& local_range,
+                              id<D> const& group_id, id<D> const& local_id);
+
 }  // namespace detail
 
-template <class T>
+template <class... Ts>
 inline constexpr bool not_supported = false;
 
 #ifdef __SYCL_DEVICE_ONLY__
@@ -190,5 +222,9 @@ inline constexpr bool not_supported = false;
 #else
 #    define CHARM_SYCL_HOST_INLINE inline __attribute__((always_inline))
 #endif
+
+namespace property::queue {
+struct enable_profiling;
+}
 
 CHARM_SYCL_END_NAMESPACE

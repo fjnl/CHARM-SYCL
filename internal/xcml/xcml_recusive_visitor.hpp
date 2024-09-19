@@ -83,6 +83,26 @@ struct symbol_scope {
         return {sym->second, type->second};
     }
 
+    type_ptr const& type_of(symbol_id_ptr const& sym) const {
+        auto const it = type_map_.find(sym->type);
+        if (it == type_map_.end()) {
+            fmt::print(stderr, "type not found: {} referenced from symbol `{}`", sym->type,
+                       sym->name);
+            std::exit(1);
+        }
+        return it->second;
+    }
+
+    type_ptr const& base_of(pointer_type_ptr const& pt) const {
+        auto const it = type_map_.find(pt->ref);
+        if (it == type_map_.end()) {
+            fmt::print(stderr, "type not found: {} referenced from pointer type {}", pt->ref,
+                       pt->type);
+            std::exit(1);
+        }
+        return it->second;
+    }
+
 private:
     template <class Symbols>
     void init(Symbols const& syms) {
@@ -128,13 +148,11 @@ protected:
 
     size_t nextid();
 
-    type_ptr rts_accessor_type();
-
-    type_ptr rts_accessor_ptr_type();
-
     void add_type(std::shared_ptr<type_node> const& node);
 
     std::string compute_type(expr_ptr const& expr, symbol_scope const& scope);
+
+    type_ptr compute_type2(expr_ptr const& expr, symbol_scope const& scope);
 
     type_ptr const& get_type(std::string const&) const;
 
@@ -240,12 +258,18 @@ struct recursive_visitor : visitor<Derived, node_ptr>, recursive_visitor_base {
         for (auto& stmt : node->body) {
             stmt_(stmt, new_scope);
         }
+
+        auto e = std::remove_if(node->body.begin(), node->body.end(), [](auto const& x) {
+            return !x;
+        });
+        node->body.erase(e, node->body.end());
+
         return node;
     }
 
     node_ptr visit_expr_stmt(expr_stmt_ptr const& node, scope_ref scope) {
         expr_(node->expr, scope);
-        return node;
+        return node->expr ? node : nullptr;
     }
 
     node_ptr visit_for_stmt(for_stmt_ptr const& node, scope_ref scope) {
@@ -264,38 +288,20 @@ struct recursive_visitor : visitor<Derived, node_ptr>, recursive_visitor_base {
         return node;
     }
 
+    node_ptr visit_while_stmt(while_stmt_ptr const& node, scope_ref scope) {
+        if (node->condition) {
+            expr_(node->condition, scope);
+        }
+        if (node->body) {
+            stmt_(node->body, scope);
+        }
+        return node;
+    }
+
     node_ptr visit_if_stmt(if_stmt_ptr const& node, scope_ref scope) {
         expr_(node->condition, scope);
         stmt_(node->then, scope);
         stmt_(node->else_, scope);
-        return node;
-    }
-
-    node_ptr visit_parallel_invoke(parallel_invoke_ptr const& node, scope_ref scope) {
-        for (auto& dim : node->dimensions) {
-            expr_(dim->offset, scope);
-            expr_(dim->size, scope);
-        }
-        expr_(node->function, scope);
-        for (auto& arg : node->arguments) {
-            expr_(arg, scope);
-        }
-        return node;
-    }
-
-    node_ptr visit_ndr_invoke(ndr_invoke_ptr const& node, scope_ref scope) {
-        for (auto& dim : node->group) {
-            expr_(dim->offset, scope);
-            expr_(dim->size, scope);
-        }
-        for (auto& dim : node->local) {
-            expr_(dim->offset, scope);
-            expr_(dim->size, scope);
-        }
-        expr_(node->function, scope);
-        for (auto& arg : node->arguments) {
-            expr_(arg, scope);
-        }
         return node;
     }
 
@@ -416,9 +422,14 @@ struct recursive_visitor : visitor<Derived, node_ptr>, recursive_visitor_base {
         return node;
     }
 
+    node_ptr visit_code(code_ptr const& node, scope_ref) {
+        return node;
+    }
+
 protected:
     void expr_(expr_ptr& node, scope_ref scope) {
-        node = expr_node::dyncast(this->visit(node, scope));
+        auto expr = this->visit(node, scope);
+        node = expr ? expr_node::dyncast(expr) : nullptr;
     }
 
     void decl_(decl_ptr& node, scope_ref scope) {
@@ -428,7 +439,8 @@ protected:
     template <class Stmt>
     void stmt_(std::shared_ptr<Stmt>& node, scope_ref scope) {
         static_assert(std::is_base_of_v<stmt_node, Stmt>);
-        node = Stmt::dyncast(this->visit(node, scope));
+        auto stmt = this->visit(node, scope);
+        node = stmt ? Stmt::dyncast(stmt) : nullptr;
     }
 };
 

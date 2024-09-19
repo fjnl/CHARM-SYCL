@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
 struct data {
     int x;
@@ -8,23 +8,27 @@ struct data {
     }
 };
 
-TEST_CASE("method", "") {
+int main() {
     sycl::queue q;
 
-    data result{100};
-    {
-        sycl::buffer<data, 1> x(&result, {1});
+    "method"_test = [&]() {
+        data result{100};
+        {
+            sycl::buffer<data, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<data, 1, sycl::access_mode::read_write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<data, 1, sycl::access_mode::read_write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                xx[0].x = xx[0].f();
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    xx[0].x = xx[0].f();
+                });
             });
-        });
 
-        ev.wait();
-    }
+            ev.wait();
+        }
 
-    REQUIRE(result.x == 100 + 1);
+        expect(result.x == 101_i);
+    };
+
+    return 0;
 }

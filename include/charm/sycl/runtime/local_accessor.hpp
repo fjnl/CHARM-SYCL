@@ -4,8 +4,10 @@
 CHARM_SYCL_BEGIN_NAMESPACE
 namespace runtime {
 
-struct local_accessor {
+struct local_accessor : refcnt_base {
     virtual ~local_accessor() = default;
+
+    virtual size_t get_offset() const = 0;
 
     size_t size() const {
         return range_[0] * range_[1] * range_[2];

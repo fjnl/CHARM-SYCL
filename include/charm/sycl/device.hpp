@@ -36,9 +36,9 @@ struct device {
 private:
     friend struct runtime::impl_access;
 
-    explicit device(std::shared_ptr<runtime::device> const& impl) : impl_(impl) {}
+    explicit device(runtime::device_ptr const& impl) : impl_(impl) {}
 
-    std::shared_ptr<runtime::device> impl_;
+    runtime::device_ptr impl_;
 };
 
 CHARM_SYCL_END_NAMESPACE

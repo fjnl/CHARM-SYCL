@@ -1,15 +1,17 @@
 #pragma once
-#include <charm/sycl.hpp>
+#include <charm/sycl/config.hpp>
 
 CHARM_SYCL_BEGIN_NAMESPACE
 
 enum class access_mode {
-    read,
-    write,
-    read_write,
-    discard_write,
-    discard_read_write,
-    atomic /* not implemented */,
+    // clang-format off
+    read               = 0x4 |       0x1,
+    write              = 0x4 | 0x2,
+    read_write         = 0x4 | 0x2 | 0x1,
+    discard_write      =       0x2,
+    discard_read_write =       0x2 | 0x1,
+    // clang-format on
+    atomic /* not implemented */ = 0x8,
 };
 
 namespace detail {
@@ -74,7 +76,7 @@ struct to_mode<read_only_t> {
 
 template <>
 struct to_mode<write_only_t> {
-    static constexpr auto value = access_mode::write;
+    static constexpr auto value = access_mode::discard_write;
 };
 
 template <>

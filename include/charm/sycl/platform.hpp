@@ -38,9 +38,9 @@ struct platform {
 private:
     friend struct runtime::impl_access;
 
-    explicit platform(std::shared_ptr<runtime::platform> const& impl) : impl_(impl) {}
+    explicit platform(runtime::platform_ptr const& impl) : impl_(impl) {}
 
-    std::shared_ptr<runtime::platform> impl_;
+    runtime::platform_ptr impl_;
 };
 
 CHARM_SYCL_END_NAMESPACE

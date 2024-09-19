@@ -1,5 +1,5 @@
 #include <cstdlib>
-#include <cxxopts.hpp>
+#include <unordered_set>
 #include <fmt/format.h>
 #include <xcml.hpp>
 #include <xcml_recusive_visitor.hpp>
@@ -134,19 +134,19 @@ struct inliner : xcml::visitor<inliner, xcml::node_ptr> {
         return node;
     }
 
-    xcml::node_ptr visit_parallel_invoke(xcml::parallel_invoke_ptr node,
-                                         std::unordered_set<std::string> const& funcs,
-                                         arg_map_t const* map) {
-        for (auto const& dim : node->dimensions) {
-            EXPR_2(dim->offset);
-            EXPR_2(dim->size);
-        }
-        EXPR(function);
-        for (auto& arg : node->arguments) {
-            EXPR_2(arg);
-        }
-        return node;
-    }
+    // xcml::node_ptr visit_parallel_invoke(xcml::parallel_invoke_ptr node,
+    //                                      std::unordered_set<std::string> const& funcs,
+    //                                      arg_map_t const* map) {
+    //     for (auto const& dim : node->dimensions) {
+    //         EXPR_2(dim->offset);
+    //         EXPR_2(dim->size);
+    //     }
+    //     EXPR(function);
+    //     for (auto& arg : node->arguments) {
+    //         EXPR_2(arg);
+    //     }
+    //     return node;
+    // }
 
     xcml::node_ptr visit_var_ref(xcml::var_ref_ptr node, std::unordered_set<std::string> const&,
                                  arg_map_t const* map) {

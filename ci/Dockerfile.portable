@@ -1,0 +1,65 @@
+FROM nvcr.io/nvidia/nvhpc:23.5-devel-cuda12.1-rockylinux8
+
+RUN echo '[amdgpu]' > /etc/yum.repos.d/amdgpu.repo && \
+    echo 'name=amdgpu' >> /etc/yum.repos.d/amdgpu.repo && \
+    echo 'baseurl=https://repo.radeon.com/amdgpu/5.7.3/rhel/8.8/main/x86_64' >> /etc/yum.repos.d/amdgpu.repo && \
+    echo 'enabled=1' >> /etc/yum.repos.d/amdgpu.repo && \
+    echo 'gpgcheck=1' >> /etc/yum.repos.d/amdgpu.repo && \
+    echo 'gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key' >> /etc/yum.repos.d/amdgpu.repo && \
+    echo "[rocm]" > /etc/yum.repos.d/rocm.repo && \
+    echo "name=rocm" >> /etc/yum.repos.d/rocm.repo && \
+    echo "baseurl=https://repo.radeon.com/rocm/rhel8/5.7.3/main" >> /etc/yum.repos.d/rocm.repo && \
+    echo "enabled=1" >> /etc/yum.repos.d/rocm.repo && \
+    echo "priority=50" >> /etc/yum.repos.d/rocm.repo && \
+    echo "gpgcheck=1" >> /etc/yum.repos.d/rocm.repo && \
+    echo "gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key" >> /etc/yum.repos.d/rocm.repo && \
+    dnf clean all && dnf info gcc && \
+    dnf install -y cmake ninja-build perl python3 gcc gcc-c++ xz git \
+    llvm-devel clang-devel clang-tools-extra libomp-devel \
+    rocm-hip-runtime-devel rocm-smi rocm-gdb rocprofiler roctracer && \
+    dnf clean all
+
+RUN mkdir -p /opt/llvm/build && \
+    cd /opt/llvm/build && \
+    curl -sSLO https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.4/llvm-project-17.0.4.src.tar.xz && \
+    echo "6703eede8013e7e5733fbd7b527757166d5698f52e239522fb320717430c88696309038501d22fe384b016b330bd92126a2c0ba88b0258c3f092801e3800b7a3  llvm-project-17.0.4.src.tar.xz" | sha512sum -c && \
+    tar xf llvm-project-17.0.4.src.tar.xz && \
+    cd /opt/llvm/build && \
+    cd llvm-project-17.0.4.src && \
+    cmake -S llvm -B build-1 -G Ninja \
+    -DLLVM_ENABLE_PROJECTS="clang" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+    -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_WARNINGS=OFF \
+    -DLLVM_ENABLE_RTTI=OFF -DLLVM_ENABLE_EH=OFF -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_INSTALL_PREFIX=/opt/llvm-1 -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_TESTS=OFF \
+    -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON -DCLANG_DEFAULT_PIE_ON_LINUX=ON \
+    && \
+    ninja -C build-1 && ninja -C build-1 install && \
+    rm -rf build-1 && \
+    cd /opt/llvm/build && \
+    cd llvm-project-17.0.4.src && \
+    export PATH=/opt/llvm-1/bin:/usr/local/bin:/usr/bin:/bin && \
+    export CC=clang CXX=clang++ LD_LIBRARY_PATH=/opt/llvm-1/lib:/opt/llvm-1/lib/x86_64-unknown-linux-gnu:${LD_LIBRARY_PATH} && \
+    cmake -S llvm -B build-2 -G Ninja \
+    -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;compiler-rt;openmp" \
+    -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_WARNINGS=OFF \
+    -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_EH=ON -DLLVM_BUILD_LLVM_DYLIB=OFF -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_INSTALL_PREFIX=/opt/llvm -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_LINK_LLVM_DYLIB=OFF -DCLANG_LINK_CLANG_DYLIB=OFF -DOPENMP_ENABLE_LIBOMPTARGET=OFF -DLLVM_ENABLE_ZSTD=OFF \
+    -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON -DCLANG_DEFAULT_PIE_ON_LINUX=ON -DBUILD_SHARED_LIBS=OFF \
+    -DLLVM_ENABLE_LIBXML2=NO -DLLVM_ENABLE_ZLIB=NO -DLLVM_ENABLE_TERMINFO=NO -DLLVM_ENABLE_LIBCXX=YES \
+    && \
+    ninja -C build-2 && ninja -C build-2 install && \
+    cd / && \
+    rm -rf /opt/llvm/build && \
+    rm -rf /opt/llvm-1
+
+ENV PATH=/opt/llvm/bin:${PATH} \
+    CC=clang CXX=clang++ \
+    LD_LIBRARY_PATH=/opt/llvm/lib:/opt/llvm/lib/x86_64-unknown-linux-gnu:/opt/rocm/lib:${LD_LIBRARY_PATH}
+
+RUN useradd -m -u 1000 user && \
+    groupmod -g 109 render && \
+    usermod -a -G render user
+
+USER 1000

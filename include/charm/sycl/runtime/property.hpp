@@ -58,6 +58,15 @@ std::unique_ptr<property_list> make_property_list(Ps&&... props) {
     return std::make_unique<property_list_impl<Ps...>>(std::forward<Ps>(props)...);
 }
 
+template <class P>
+P const* get_prop(sycl::property_list const& prop_list) {
+    auto const& impl = impl_access::get_impl(prop_list);
+    if (impl) {
+        return impl->get_property<P>();
+    }
+    return nullptr;
+}
+
 }  // namespace runtime
 
 CHARM_SYCL_END_NAMESPACE

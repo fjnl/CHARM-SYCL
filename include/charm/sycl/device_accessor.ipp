@@ -17,7 +17,7 @@ device_accessor<DataT, Dimensions, AccessMode>::device_accessor(
     : impl_(runtime::make_accessor(runtime::impl_access::get_impl(commandGroupHandlerRef),
                                    runtime::impl_access::get_impl(bufferRef),
                                    detail::extend(accessRange), detail::extend(accessOffset),
-                                   AccessMode, runtime::impl_access::get_impl(propList).get()))
+                                   AccessMode))
 #endif
 {
 }

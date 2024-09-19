@@ -105,9 +105,10 @@ struct buffer : detail::common_ref_ops<buffer<T, Dimensions, AllocatorT>> {
 private:
     friend struct runtime::impl_access;
 
-    explicit buffer(std::shared_ptr<runtime::buffer> const& impl) : impl_(impl) {}
+    explicit buffer(runtime::buffer_ptr const& impl) : impl_(impl) {}
 
-    std::shared_ptr<runtime::buffer> impl_;
+    runtime::buffer_ptr impl_;
+    std::shared_ptr<void> sp_;
 };
 
 template <class InputIterator, class AllocatorT>

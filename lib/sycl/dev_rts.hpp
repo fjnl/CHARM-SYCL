@@ -10,7 +10,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include <BS_thread_pool_light.hpp>
+#include <BS_thread_pool.hpp>
 #include "kreg.hpp"
 #include "rts.hpp"
 
@@ -18,7 +18,7 @@ namespace dev_rts {
 
 namespace rts = CHARM_SYCL_NS::rts;
 
-extern std::unique_ptr<BS::thread_pool_light> q_task;
+extern std::unique_ptr<BS::thread_pool> q_task;
 extern std::chrono::high_resolution_clock::time_point t0;
 
 inline void init_time_point() {
@@ -122,7 +122,7 @@ private:
             run_ = true;
 
             if (fn_) {
-                q_task->push_task([ev = this->shared_from_this()] {
+                q_task->detach_task([ev = this->shared_from_this()] {
                     if (ev->t_enable) [[unlikely]] {
                         auto const t = std::chrono::high_resolution_clock::now();
                         ev->t_start =
@@ -189,8 +189,12 @@ struct event_base : rts::event {
 
     explicit event_base(std::shared_ptr<EventNode>&& ev) : ev_(std::move(ev)) {}
 
-    std::unique_ptr<sycl::runtime::event_barrier> create_barrier() override {
-        return std::make_unique<event_barrier_impl<EventNode>>();
+    sycl::runtime::event_barrier* create_barrier() override {
+        return new event_barrier_impl<EventNode>();
+    }
+
+    void release_barrier(sycl::runtime::event_barrier* ptr) override {
+        delete ptr;
     }
 
     uint64_t profiling_command_submit() override {
@@ -214,7 +218,7 @@ struct event_base : rts::event {
         return ev_->get_t_end();
     }
 
-private:
+protected:
     friend struct event_barrier_impl<EventNode>;
 
     std::shared_ptr<EventNode> ev_;
@@ -426,6 +430,11 @@ struct task_parameter_storage {
         static_assert(std::is_trivially_copyable_v<T>);
         static_assert(std::is_trivially_destructible_v<T>);
         return reinterpret_cast<T*>(next_param_ptr(sizeof(T), alignof(T)));
+    }
+
+    void add_param_val(void* val) {
+        args_.at(arg_idx_) = val;
+        arg_idx_++;
     }
 
     void** data() {

@@ -4,14 +4,17 @@
 
 namespace {
 
+using namespace kreg;
+
 template <class V>
 struct hval {
     hval() = default;
 
     explicit hval(std::string_view k, uint32_t h) : hash(h), key(k), val() {}
 
-    explicit hval(std::string_view k, uint32_t h, V const& v)
-        : hash(h), key(k), val(std::make_unique<V>(v)) {}
+    template <class... Args>
+    explicit hval(std::string_view k, uint32_t h, Args&&... args)
+        : hash(h), key(k), val(std::make_unique<V>(std::forward<Args>(args)...)) {}
 
     void construct() {
         val = std::make_unique<V>();
@@ -34,21 +37,21 @@ struct hval {
 
 struct kernel_registry_impl final : kreg::kernel_registry {
     void add(std::string_view name, uint32_t name_hash, std::string_view kind,
-             uint32_t kind_hash, void* f) override {
+             uint32_t kind_hash, void* f, int is_ndr) override {
         auto& storage = get(kind, kind_hash);
 
-        hval<void*> hv(name, name_hash, f);
+        hval<kernel_info> hv(name, name_hash, f, is_ndr);
 
         storage.insert(std::move(hv));
     }
 
-    void* find(std::string_view name, uint32_t name_hash, std::string_view kind,
-               uint32_t kind_hash) override {
+    kernel_info const* find(std::string_view name, uint32_t name_hash, std::string_view kind,
+                            uint32_t kind_hash) override {
         auto& storage = get(kind, kind_hash);
-        hval<void*> hv(name, name_hash);
+        hval<kernel_info> hv(name, name_hash);
 
         if (auto it = storage.find(hv); it != storage.end()) {
-            return *it->val;
+            return it->val.get();
         }
         return nullptr;
     }
@@ -57,8 +60,8 @@ private:
     template <class V>
     using hset = std::unordered_set<hval<V>, typename hval<V>::hash_fn>;
 
-    hset<void*>& get(std::string_view kind, uint32_t hash) {
-        hval<hset<void*>> hv(kind, hash);
+    hset<kernel_info>& get(std::string_view kind, uint32_t hash) {
+        hval<hset<kernel_info>> hv(kind, hash);
         if (auto it = data_.find(hv); it != data_.end()) {
             return *it->val;
         }
@@ -69,7 +72,7 @@ private:
         return *res.first->val;
     }
 
-    hset<hset<void*>> data_;
+    hset<hset<kernel_info>> data_;
 };
 
 }  // namespace
@@ -84,7 +87,8 @@ kernel_registry& get() {
 }  // namespace kreg
 
 extern "C" void __s_add_kernel_registry(char const* name, unsigned long name_hash,
-                                        char const* kind, unsigned long kind_hash, void* f) {
+                                        char const* kind, unsigned long kind_hash, void* f,
+                                        int is_ndr) {
     static_assert(sizeof(unsigned long) >= 4);
-    kreg::get().add(name, name_hash, kind, kind_hash, f);
+    kreg::get().add(name, name_hash, kind, kind_hash, f, is_ndr);
 }

@@ -4,9 +4,32 @@
 #include <string>
 #include <utility>
 #include <variant>
-#include <clang/AST/ASTDumper.h>
 #include <fmt/compile.h>
 #include <fmt/format.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#    pragma GCC diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
+#    pragma GCC diagnostic ignored "-Wdeprecated-this-capture"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#    pragma clang diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
+#    pragma clang diagnostic ignored "-Wdeprecated-this-capture"
+#endif
+
+#include <clang/AST/ASTDumper.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
 
 using variant_t =
     std::variant<std::monostate, clang::Stmt const*, clang::Decl const*, clang::QualType>;

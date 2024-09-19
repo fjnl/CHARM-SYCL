@@ -3,10 +3,32 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <clang/AST/AST.h>
-#include <clang/AST/Mangle.h>
+#include <unordered_set>
+#include <fmt/format.h>
 #include <utils/naming.hpp>
 #include <xcml_type.hpp>
+#include "utils.hpp"
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+
+#include <clang/AST/AST.h>
+#include <clang/AST/Mangle.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
 
 #define COMPARE_TYPE(ty, name_str) \
     else if (type == ctx.ty) {     \
@@ -63,7 +85,7 @@ struct transform_info::impl {
             return encode_name(clang::GlobalDecl(ctor, clang::Ctor_Complete));
         }
         if (auto fd = clang::dyn_cast<clang::FunctionDecl>(decl)) {
-            if (fd->isExternC() && fd->getName().startswith("__charm_sycl_")) {
+            if (fd->getDeclName().isIdentifier() && fd->getName().startswith("__charm_sycl_")) {
                 std::string nns;
                 llvm::raw_string_ostream stream(nns);
                 fd->printNestedNameSpecifier(stream);
@@ -181,6 +203,19 @@ struct transform_info::impl {
                 clang::dyn_cast<clang::EnumDecl>(type->getAsTagDecl())->getPromotionType());
         }
 
+        if (type->isVectorType()) {
+            auto vt = clang::dyn_cast<clang::VectorType>(type);
+            auto t = xcml::new_basic_type();
+
+            t->type = nm.xbasic_type();
+            t->name = define_type(self, vt->getElementType());
+            t->veclen = vt->getNumElements();
+
+            prg->type_table.push_back(t);
+
+            return t->type;
+        }
+
         not_supported(type, ctx);
     }
 
@@ -215,31 +250,20 @@ struct transform_info::impl {
         return ty;
     }
 
-    void define_record_fields(struct_builder& st, clang::CXXRecordDecl const* origin,
+    void define_record_fields(struct_builder& st, clang::CXXRecordDecl const* /*origin*/,
                               clang::CXXRecordDecl const* record, context const& = context()) {
         PUSH_CONTEXT(record);
 
-        if (record->getNumVBases() > 0) {
-            not_supported(record, ctx, "has virtual base classes");
-        }
+        auto const l = layout(ctx, ctx.getRecordType(record));
 
-        for (auto const& base : record->bases()) {
-            auto const type = base.getType();
-
-            PUSH_CONTEXT(type);
-
-            if (auto const record = type->getAsCXXRecordDecl()) {
-                define_record_fields(st, origin, record);
+        if (l.empty()) {
+            st.add("__s_dummy", ctx.CharTy);
+        } else {
+            for (auto it = l.begin(); it != l.end(); ++it) {
+                auto type = it->decl()->getType();
+                type.removeLocalFastQualifiers();
+                st.add(l.get_field_name(it->decl()), type);
             }
-        }
-
-        for (auto f : record->fields()) {
-            st.add(f->getNameAsString(), f->getType());
-        }
-
-        if (origin == record && record->getNumBases() == 0 && record->getNumVBases() == 0 &&
-            record->isEmpty()) {
-            st.add("dummy", ctx.CharTy);
         }
     }
 
@@ -306,6 +330,9 @@ struct transform_info::impl {
     std::map<clang::QualType, std::string> defined_types;
     std::unordered_map<int64_t, std::string> sym_map;
     std::unordered_map<std::string, transform_info::func_desc> defined_funcs;
+    std::unordered_map<clang::ForStmt const*, xcml::expr_ptr> for_cond_map;
+    std::optional<capture_map_t> current_captures;
+    llvm::DenseSet<clang::CXXRecordDecl const*> kernel_records;
 };
 
 transform_info::transform_info(clang::ASTContext& ctx) : pimpl_(std::make_unique<impl>(ctx)) {}
@@ -396,4 +423,38 @@ clang::ASTContext& transform_info::ctx() {
 
 clang::ASTContext const& transform_info::ctx() const {
     return pimpl_->ctx;
+}
+
+void transform_info::add_for_condition(clang::ForStmt const* stmt, xcml::expr_ptr cond) {
+    pimpl_->for_cond_map.insert_or_assign(stmt, cond);
+}
+
+xcml::expr_ptr transform_info::lookup_for_condition(clang::ForStmt const* stmt) {
+    auto const it = pimpl_->for_cond_map.find(stmt);
+    if (it == pimpl_->for_cond_map.end()) {
+        return nullptr;
+    }
+    return it->second;
+}
+
+scoped_set<std::optional<capture_map_t>> transform_info::scoped_set_captures(
+    clang::CXXRecordDecl const* decl) {
+    capture_map_t captures;
+    clang::FieldDecl* this_capture;
+
+    decl->getCaptureFields(captures, this_capture);
+
+    return scoped_set(pimpl_->current_captures, std::make_optional(captures));
+}
+
+std::optional<capture_map_t> const& transform_info::current_captures() const {
+    return pimpl_->current_captures;
+}
+
+void transform_info::add_kernel(clang::CXXRecordDecl const* record) {
+    pimpl_->kernel_records.insert(record->getCanonicalDecl());
+}
+
+bool transform_info::is_kernel(clang::CXXRecordDecl const* record) {
+    return pimpl_->kernel_records.contains(record->getCanonicalDecl());
 }

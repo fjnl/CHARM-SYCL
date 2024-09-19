@@ -1,9 +1,34 @@
 #include "visitor_impl.hpp"
 
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wunused-parameter"
+#    pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wunused-parameter"
+#    pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#endif
+
+#include <clang/AST/Attr.h>
+#include <clang/AST/ParentMapContext.h>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#    pragma GCC diagnostic pop
+#endif
+#if defined(__GNUC__) && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
+
 #define EXTRA_ARGS xcml::expr_ptr* = nullptr, context const& = context()
 
 struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr*> {
     using stmt_visitor_base::stmt_visitor_base;
+
+    void VisitAttributedStmt(clang::AttributedStmt const* stmt, EXTRA_ARGS) {
+        visit_stmt(stmt->getSubStmt());
+    }
 
     void VisitCompoundStmt(clang::CompoundStmt const* compound,
                            xcml::expr_ptr* last_value = nullptr, context const& = context()) {
@@ -50,8 +75,126 @@ struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr
         add(node);
     }
 
+    bool is_simple_expr(clang::Expr const* expr, bool nested, EXTRA_ARGS) {
+        PUSH_CONTEXT(expr);
+
+        expr = expr->IgnoreImpCasts();
+
+        if (nested) {
+            return clang::isa<clang::DeclRefExpr, clang::IntegerLiteral,
+                              clang::FloatingLiteral>(expr);
+        }
+
+        if (auto const* unary = clang::dyn_cast<clang::UnaryOperator>(expr)) {
+            return is_simple_expr(unary->getSubExpr(), true);
+        } else if (auto const* binary = clang::dyn_cast<clang::BinaryOperator>(expr)) {
+            return is_simple_expr(binary->getLHS(), true) &&
+                   is_simple_expr(binary->getRHS(), true);
+        } else if (auto const* call = clang::dyn_cast<clang::CallExpr>(expr)) {
+            for (auto const* arg : call->arguments()) {
+                if (!is_simple_expr(arg, true)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return is_simple_expr(expr, true);
+    }
+
+    xcml::expr_ptr visit_simple_expr(clang::Expr const* expr, EXTRA_ARGS) {
+        PUSH_CONTEXT(expr);
+
+        if (is_simple_expr(expr, false)) {
+            return visit_expr_direct(expr);
+        }
+
+        return nullptr;
+    }
+
+    void VisitForStmt_2(clang::ForStmt const* stmt, llvm::StringRef anno, EXTRA_ARGS) {
+        PUSH_CONTEXT(stmt);
+
+        auto node = xcml::new_for_stmt();
+
+        /*
+         * for (TYPE VAR = SIMPLE_INIT_EXPR; SIMPLE_COND_EXPR; VAR = SIMPLE_INC_EXPR)
+         */
+
+        auto const* vd = clang::dyn_cast<clang::VarDecl>(
+            clang::dyn_cast<clang::DeclStmt>(stmt->getInit())->getSingleDecl());
+        auto const type = vd->getType();
+        auto const var =
+            u::add_local_var(scope_, info_.define_type(type), info_.rename_sym(vd));
+        auto const* init = vd->getInit();
+        auto const* cond = stmt->getCond();
+        auto const* inc = stmt->getInc();
+
+        node->init = u::assign_expr(var, visit_simple_expr(init));
+        if (!node->init) {
+            not_supported(init, ast_, "init: not a simple expression");
+        }
+
+        node->condition = visit_simple_expr(cond);
+        if (!node->init) {
+            not_supported(cond, ast_, "cond: not a simple expression");
+        }
+
+        if (auto const* asg = clang::dyn_cast<clang::BinaryOperator>(inc);
+            asg && asg->getOpcode() == clang::BO_Assign) {
+            auto asg_node = u::new_assign_expr();
+
+            asg_node->lhs = visit_simple_expr(asg->getLHS());
+            if (!asg_node->lhs) {
+                not_supported(asg->getLHS(), ast_, "inc/lhs: not a simple expression");
+            }
+
+            asg_node->rhs = visit_simple_expr(asg->getRHS());
+            if (!asg_node->rhs) {
+                not_supported(asg->getRHS(), ast_, "inc/rhs: not a simple expression");
+            }
+
+            node->iter = asg_node;
+        }
+
+        if (auto const* body = stmt->getBody()) {
+            node->body = visit_compound_stmt(body);
+        }
+
+        if (anno.contains(" top ")) {
+            llvm::APInt v;
+            int collapse = 1;
+
+            if (anno.rsplit(' ').second.getAsInteger(10, v)) {
+                collapse = v.getZExtValue();
+            }
+
+            node->pragma.push_back(
+                u::make_pragma(fmt::format("omp parallel for collapse({})", collapse)));
+        } else {
+            // node->pragma.push_back(u::make_pragma("loop"));
+        }
+
+        add(node);
+    }
+
     void VisitForStmt(clang::ForStmt const* stmt, EXTRA_ARGS) {
         PUSH_CONTEXT(stmt);
+
+        if (auto const* init = stmt->getInit()) {
+            if (auto const* ds = clang::dyn_cast<clang::DeclStmt>(init); ds->isSingleDecl()) {
+                if (auto const* vd = clang::dyn_cast<clang::VarDecl>(ds->getSingleDecl())) {
+                    for (auto const* attr : vd->attrs()) {
+                        if (auto const* anno = clang::dyn_cast<clang::AnnotateAttr>(attr)) {
+                            if (anno->getAnnotation().startswith("charm_sycl_parallel_for ")) {
+                                return VisitForStmt_2(stmt, anno->getAnnotation());
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         auto node = xcml::new_for_stmt();
         xcml::expr_ptr cond_var;
@@ -62,6 +205,8 @@ struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr
         if (auto cond = stmt->getCond()) {
             cond_var = visit_expr(cond);
             node->condition = cond_var;
+
+            info_.add_for_condition(stmt, cond_var);
         }
         if (auto body = stmt->getBody()) {
             node->body = visit_compound_stmt(body);
@@ -71,7 +216,28 @@ struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr
         }
         if (auto cond = stmt->getCond()) {
             auto asg = u::assign_expr(cond_var, visit_expr(node->body, cond));
-            u::push_expr(node->body, asg);
+            push_expr(node->body, cond, asg);
+        }
+
+        add(node);
+    }
+
+    void VisitWhileStmt(clang::WhileStmt const* stmt, EXTRA_ARGS) {
+        PUSH_CONTEXT(stmt);
+
+        auto node = xcml::new_while_stmt();
+        xcml::expr_ptr cond_var;
+
+        if (auto cond = stmt->getCond()) {
+            cond_var = visit_expr_val(cond);
+            node->condition = cond_var;
+        }
+        if (auto body = stmt->getBody()) {
+            node->body = visit_compound_stmt(body);
+        }
+        if (auto cond = stmt->getCond()) {
+            auto asg = u::assign_expr(cond_var, visit_expr_val(node->body, cond));
+            push_expr(node->body, cond, asg);
         }
 
         add(node);
@@ -87,12 +253,14 @@ struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr
         if (value) {
             auto ret_ty = current_func_->getReturnType();
 
-            if (ret_ty->isPointerType() || ret_ty->isReferenceType()) {
-                auto ty = expr_type(value);
-                if (ty->isPointerType() || ty->isReferenceType()) {
-                    node->value = visit_expr(value);
+            if (ret_ty->isReferenceType() && expr_type(value)->isReferenceType()) {
+                if (auto const* uo =
+                        clang::dyn_cast<clang::UnaryOperator>(value->IgnoreImpCasts())) {
+                    if (uo->getOpcode() == clang::UO_Deref) {
+                        node->value = u::make_addr_of(visit_expr(value));
+                    }
                 } else {
-                    node->value = u::make_addr_of(visit_expr_val(value));
+                    node->value = visit_expr(value);
                 }
             } else {
                 node->value = visit_expr_val(value);
@@ -155,6 +323,49 @@ struct stmt_visitor final : stmt_visitor_base<stmt_visitor, void, xcml::expr_ptr
         PUSH_CONTEXT(stmt);
 
         add(u::new_break_stmt());
+    }
+
+    void VisitContinueStmt(clang::ContinueStmt const* stmt, EXTRA_ARGS) {
+        PUSH_CONTEXT(stmt);
+
+        auto& pmc = ast_.getParentMapContext();
+        clang::Stmt const* p = stmt;
+
+        for (; p;) {
+            auto parents = pmc.getParents(*p);
+
+            if (parents.empty()) {
+                p = nullptr;
+            } else {
+                if (auto const* for_ = parents[0].get<clang::ForStmt>()) {
+                    p = for_;
+                    break;
+                } else if (auto const* while_ = parents[0].get<clang::WhileStmt>()) {
+                    p = while_;
+                    break;
+                } else if (auto const* stmt = parents[0].get<clang::Stmt>()) {
+                    p = stmt;
+                } else {
+                    p = nullptr;
+                }
+            }
+        }
+
+        if (!p) {
+            not_supported(stmt, ast_, "cannot find the parent loop");
+        }
+
+        if (auto const* for_ = clang::dyn_cast<clang::ForStmt>(p)) {
+            visit_expr(for_->getInc());
+
+            if (auto cond = for_->getCond()) {
+                auto cond_var = info_.lookup_for_condition(for_);
+
+                push_expr(cond, u::assign_expr(cond_var, visit_expr(cond)));
+            }
+        }
+
+        add(u::new_continue_stmt());
     }
 
     xcml::compound_stmt_ptr get_scope() const {
@@ -243,4 +454,13 @@ xcml::compound_stmt_ptr visitor_base::visit_compound_stmt(clang::Stmt const* stm
     }
 
     return c;
+}
+
+xcml::compound_stmt_ptr visitor_base::visit_compound_stmt(clang::CompoundStmt const* stmt,
+                                                          clang::Expr const* kernel,
+                                                          clang::FunctionDecl const* function,
+                                                          context const&) {
+    stmt_visitor vis(info_, nullptr, kernel, function, true);
+    vis.Visit(stmt);
+    return vis.get_scope();
 }

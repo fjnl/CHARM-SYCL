@@ -1,0 +1,13 @@
+<interface name="lapacke_interface${suffix}">
+    <include>complex</include>
+    <include>blas/common.hpp</include>
+    <include>blas/cblas_interface${suffix}.hpp</include>
+
+    <type name="BLAS" type="cblas_interface${suffix}" />
+
+    <type name="layout_t" type="typename BLAS::layout_t" />
+    <type name="trans_t" type="typename BLAS::trans_t" />
+    <type name="diag_t" type="typename BLAS::diag_t" />
+    <type name="side_t" type="typename BLAS::side_t" />
+    <type name="uplo_t" type="typename BLAS::uplo_t" />
+</interface>

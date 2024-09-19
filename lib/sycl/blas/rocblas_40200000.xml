@@ -1,0 +1,48 @@
+<interface name="rocblas_interface_40200000">
+    <include>complex</include>
+    <include>hip/hip_interface.hpp</include>
+    <include>blas/common.hpp</include>
+
+    <type name="handle_t" type="void*" tag="rocblas_handle" />
+    <type name="result_t" type="unsigned int" tag="rocblas_status" />
+    <type name="trans_t" type="unsigned int" tag="rocblas_operation" />
+    <type name="diag_t" type="unsigned int" tag="rocblas_diagonal" />
+    <type name="side_t" type="unsigned int" tag="rocblas_side" />
+    <type name="uplo_t" type="unsigned int" tag="rocblas_fill" />
+    <type name="HIP" type="hip_interface_40200000" />
+    <type name="stream_t" type="typename HIP::stream_t" />
+
+    <const type="trans_t" name="TRANS_N" value="111" />
+    <const type="trans_t" name="TRANS_T" value="112" />
+    <const type="trans_t" name="TRANS_C" value="113" />
+
+    <const type="uplo_t" name="UPLO_U" value="121" />
+    <const type="uplo_t" name="UPLO_L" value="122" />
+
+    <const type="diag_t" name="DIAG_N" value="131" />
+    <const type="diag_t" name="DIAG_U" value="132" />
+
+    <const type="side_t" name="SIDE_L" value="141" />
+    <const type="side_t" name="SIDE_R" value="142" />
+    
+    <function return="result_t" name="rocblas_create_handle" realname="rocblas_create_handle">
+        <param type="handle_t*" />
+    </function>
+
+    <function return="result_t" name="rocblas_destroy_handle" realname="rocblas_destroy_handle">
+        <param type="handle_t" />
+    </function>
+    
+    <function return="result_t" name="rocblas_get_version_string" realname="rocblas_get_version_string">
+        <param type="char*" />
+        <param type="size_t" />
+    </function>
+
+    <function return="result_t" name="rocblas_get_version_string_size" realname="rocblas_get_version_string_size">
+        <param type="size_t*" />
+    </function>
+
+    <function return="char const*" name="rocblas_status_to_string" realname="rocblas_status_to_string">
+        <param type="result_t" />
+    </function>
+</interface>

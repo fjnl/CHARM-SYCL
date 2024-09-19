@@ -24,8 +24,8 @@ public:
 
 template <class DataT, int Dimensions, class AllocatorT, class TagT,
           class = std::enable_if_t<detail::is_tag_v<TagT>>>
-accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, TagT)
-    -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
+accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&,
+         TagT) -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
 
 template <class DataT, int Dimensions, class AllocatorT, class TagT,
           class = std::enable_if_t<detail::is_tag_v<TagT>>>
@@ -34,8 +34,31 @@ accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, TagT, property_list c
 
 template <class DataT, int Dimensions, class AllocatorT, class TagT,
           class = std::enable_if_t<detail::is_tag_v<TagT>>>
-accessor(buffer<DataT, Dimensions, AllocatorT>&, TagT)
-    -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::host_buffer>;
+accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, range<Dimensions> const&,
+         TagT) -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
+
+template <class DataT, int Dimensions, class AllocatorT, class TagT,
+          class = std::enable_if_t<detail::is_tag_v<TagT>>>
+accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, range<Dimensions> const&, TagT,
+         property_list const&)
+    -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
+
+template <class DataT, int Dimensions, class AllocatorT, class TagT,
+          class = std::enable_if_t<detail::is_tag_v<TagT>>>
+accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, range<Dimensions> const&,
+         id<Dimensions> const&,
+         TagT) -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
+
+template <class DataT, int Dimensions, class AllocatorT, class TagT,
+          class = std::enable_if_t<detail::is_tag_v<TagT>>>
+accessor(buffer<DataT, Dimensions, AllocatorT>&, handler&, range<Dimensions> const&,
+         id<Dimensions> const&, TagT, property_list const&)
+    -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::device>;
+
+template <class DataT, int Dimensions, class AllocatorT, class TagT,
+          class = std::enable_if_t<detail::is_tag_v<TagT>>>
+accessor(buffer<DataT, Dimensions, AllocatorT>&,
+         TagT) -> accessor<DataT, Dimensions, detail::to_mode_v<TagT>, target::host_buffer>;
 
 template <class DataT, int Dimensions, class AllocatorT, class TagT,
           class = std::enable_if_t<detail::is_tag_v<TagT>>>

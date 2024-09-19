@@ -6,9 +6,9 @@ CHARM_SYCL_BEGIN_NAMESPACE
 
 namespace runtime::impl {
 
-accessor_impl::accessor_impl(std::shared_ptr<handler_impl> const& handler,
-                             std::shared_ptr<buffer_impl> const& buf, range<3> range,
-                             id<3> offset, access_mode mode, property_list const*)
+accessor_impl::accessor_impl(intrusive_ptr<handler_impl> const& handler,
+                             intrusive_ptr<buffer_impl> const& buf, range<3> range,
+                             id<3> offset, access_mode mode)
     : range_(range), offset_(offset), handler_(handler), buffer_(buf), mode_(mode) {}
 
 range<3> accessor_impl::get_range() const {
@@ -23,11 +23,11 @@ void* accessor_impl::get_pointer() {
     return buffer_->get_pointer();
 }
 
-std::shared_ptr<runtime::buffer> accessor_impl::get_buffer() {
+runtime::buffer_ptr accessor_impl::get_buffer() {
     return buffer_;
 }
 
-std::shared_ptr<buffer_impl> accessor_impl::get() {
+intrusive_ptr<buffer_impl> accessor_impl::get() {
     return buffer_;
 }
 
@@ -35,17 +35,16 @@ access_mode accessor_impl::get_access_mode() const {
     return mode_;
 }
 
-std::shared_ptr<accessor_impl> make_accessor(std::shared_ptr<runtime::handler> const& handler,
-                                             std::shared_ptr<runtime::buffer> const& buf,
-                                             range<3> range, id<3> offset, access_mode mode,
-                                             property_list const* props) {
-    return std::make_shared<accessor_impl>(std::dynamic_pointer_cast<handler_impl>(handler),
-                                           std::dynamic_pointer_cast<buffer_impl>(buf), range,
-                                           offset, mode, props);
+intrusive_ptr<accessor_impl> make_accessor(intrusive_ptr<runtime::handler> const& handler,
+                                           intrusive_ptr<runtime::buffer> const& buf,
+                                           range<3> range, id<3> offset, access_mode mode) {
+    return make_intrusive<accessor_impl>(static_pointer_cast<handler_impl>(handler),
+                                         static_pointer_cast<buffer_impl>(buf), range, offset,
+                                         mode);
 }
 
-host_accessor_impl::host_accessor_impl(std::shared_ptr<buffer_impl> const& buf, range<3> range,
-                                       id<3> offset, access_mode mode, property_list const*)
+host_accessor_impl::host_accessor_impl(intrusive_ptr<buffer_impl> const& buf, range<3> range,
+                                       id<3> offset, access_mode mode)
     : range_(range), offset_(offset), buffer_(buf), mode_(mode) {
     switch (mode) {
         case access_mode::read:
@@ -76,11 +75,11 @@ void* host_accessor_impl::get_pointer() {
     return buffer_->get_host_pointer();
 }
 
-std::shared_ptr<runtime::buffer> host_accessor_impl::get_buffer() {
+runtime::buffer_ptr host_accessor_impl::get_buffer() {
     return buffer_;
 }
 
-std::shared_ptr<buffer_impl> host_accessor_impl::get() {
+intrusive_ptr<buffer_impl> host_accessor_impl::get() {
     return buffer_;
 }
 
@@ -88,29 +87,26 @@ access_mode host_accessor_impl::get_access_mode() const {
     return mode_;
 }
 
-std::shared_ptr<host_accessor_impl> make_host_accessor(
-    std::shared_ptr<runtime::buffer> const& buf, range<3> range, id<3> offset, access_mode mode,
-    property_list const* props) {
-    return std::make_shared<host_accessor_impl>(std::dynamic_pointer_cast<buffer_impl>(buf),
-                                                range, offset, mode, props);
+intrusive_ptr<host_accessor_impl> make_host_accessor(runtime::buffer_ptr const& buf,
+                                                     range<3> range, id<3> offset,
+                                                     access_mode mode) {
+    return make_intrusive<host_accessor_impl>(static_pointer_cast<buffer_impl>(buf), range,
+                                              offset, mode);
 }
 
 }  // namespace runtime::impl
 
 namespace runtime {
 
-std::shared_ptr<accessor> make_accessor(std::shared_ptr<handler> const& handler,
-                                        std::shared_ptr<buffer> const& buf, range<3> range,
-                                        id<3> offset, access_mode mode,
-                                        property_list const* props) {
-    return impl::make_accessor(handler, buf, range, offset, mode, props);
+accessor_ptr make_accessor(intrusive_ptr<handler> const& handler,
+                           intrusive_ptr<buffer> const& buf, range<3> range, id<3> offset,
+                           access_mode mode) {
+    return impl::make_accessor(handler, buf, range, offset, mode);
 }
 
-std::shared_ptr<host_accessor> make_host_accessor(std::shared_ptr<buffer> const& buf,
-                                                  range<3> range, id<3> offset,
-                                                  access_mode mode,
-                                                  property_list const* props) {
-    return impl::make_host_accessor(buf, range, offset, mode, props);
+host_accessor_ptr make_host_accessor(intrusive_ptr<buffer> const& buf, range<3> range,
+                                     id<3> offset, access_mode mode) {
+    return impl::make_host_accessor(buf, range, offset, mode);
 }
 
 }  // namespace runtime

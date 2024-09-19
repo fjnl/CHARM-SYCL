@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
 
             void to_attr(pugi::xml_attribute& attr, ref_scope rs);
 
-            void to_XML(pugi::xml_node& node, size_t v);
+            // void to_XML(pugi::xml_node& node, size_t v);
 
             void to_XML(pugi::xml_node& node, std::string const& s);
 
@@ -304,14 +304,14 @@ int main(int argc, char** argv) {
         void to_attr(pugi::xml_attribute& attr, std::string const& str)
         { attr = str.c_str(); }
 
-        void to_XML(pugi::xml_node& node, size_t val) {
-            auto node1 = node.append_child("uint64");
-            to_XML(node1, std::to_string(val)); 
-        }
-                
+        // void to_XML(pugi::xml_node& node, size_t val) {
+        //     auto node1 = node.append_child("uint64");
+        //     to_XML(node1, std::to_string(val)); 
+        // }
+
         void to_XML(pugi::xml_node& node, std::string const& s)
         { node.text().set(s.c_str()); }
-                
+
         }
     )");
 

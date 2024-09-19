@@ -1,13 +1,24 @@
-add_executable(
-    chsy-lower
-
+add_library(
+    cscc-lower
+    OBJECT
+    array_as_vec.cpp
     builtin.cpp
     chsy-lower.cpp
     common.cpp
     cpu-c.cpp
+    ext_vector_type.cpp
     inline.cpp
     math.cpp
     nvidia-cuda.cpp
 )
-target_link_libraries(chsy-lower PRIVATE xcml fmt::fmt pugixml::pugixml cxxopts::cxxopts utils-target utils-hash)
-install(TARGETS chsy-lower)
+
+target_link_libraries(
+    cscc-lower
+    PRIVATE
+    cxxopts::cxxopts
+    fmt::fmt
+    pugixml::pugixml
+    utils-hash
+    utils-target
+    xcml
+)

@@ -37,24 +37,25 @@ struct output_buffer {
     output_buffer& operator=(output_buffer&&) = delete;
 
     friend std::ostream& operator<<(std::ostream& os, output_buffer const& out) {
-        if (!out.type_.empty()) {
-            os.write(out.type_.data(), out.type_.size());
-            if (out.body_.back() != '\n') {
-                os << '\n';
-            }
-            os << '\n';
-        }
-        if (!out.body_.empty()) {
-            os.write(out.body_.data(), out.body_.size());
-            if (out.body_.back() != '\n') {
-                os << '\n';
-            }
+        if (!out.pre_.empty()) {
+            os.write(out.pre_.data(), out.pre_.size());
         }
         return os;
     }
 
+    void flush() {
+        pre_.insert(pre_.end(), type_.begin(), type_.end());
+        type_.clear();
+        pre_.push_back('\n');
+        pre_.push_back('\n');
+
+        pre_.insert(pre_.end(), body_.begin(), body_.end());
+        body_.clear();
+        pre_.push_back('\n');
+    }
+
 private:
-    std::vector<char> type_, body_;
+    std::vector<char> pre_, type_, body_;
 
 public:
     std::back_insert_iterator<std::vector<char>> type, body;
@@ -164,7 +165,7 @@ struct symbol_scope {
         std::shared_ptr<xcml::type_node> const type;
 
         xcml::function_type_ptr function_type() const {
-            if (auto ft = std::dynamic_pointer_cast<xcml::function_type>(type)) {
+            if (auto ft = xcml::function_type::dyncast(type)) {
                 return ft;
             }
             fatal("not a function type: {} referenced as symbol {}", type->type, sym->name);
@@ -237,7 +238,11 @@ struct type_decompiler : xcml::visitor<type_decompiler, type_str> {
 
     type_str format_type(std::string const& name, symbol_scope const* scope) const {
         auto type = find_type(types_, name);
-        auto bt = std::dynamic_pointer_cast<xcml::basic_type>(type);
+        auto bt = xcml::basic_type::dyncast(type);
+
+        if (bt && bt->veclen > 0) {
+            fatal("format_type: vector type is not supported: {}", type->type);
+        }
 
         if (bt && bt->is_builtin) {
             type_str res;
@@ -256,17 +261,17 @@ struct type_decompiler : xcml::visitor<type_decompiler, type_str> {
             }
 
             return res;
-        } else if (auto t = std::dynamic_pointer_cast<xcml::struct_type>(type)) {
+        } else if (auto t = xcml::struct_type::dyncast(type)) {
             auto const& res = scope->lookup_by_type(t->type);
 
             return {fmt::format(FMT_COMPILE("struct {}"), res.sym->name), {}};
-        } else if (auto t = std::dynamic_pointer_cast<xcml::pointer_type>(type)) {
+        } else if (auto t = xcml::pointer_type::dyncast(type)) {
             auto ref = format_type(t->ref, scope);
 
             ref.left += '*';
 
             return ref;
-        } else if (auto t = std::dynamic_pointer_cast<xcml::array_type>(type)) {
+        } else if (auto t = xcml::array_type::dyncast(type)) {
             auto elem = format_type(t->element_type, scope);
 
             if (t->array_size) {
@@ -299,25 +304,25 @@ struct expr {
 struct expr_decompiler : xcml::visitor<expr_decompiler, expr> {
     explicit expr_decompiler(type_map const& types) : types_(types) {}
 
-#define OP(type, prec, opstr, is_pre)                            \
-    if (auto op = std::dynamic_pointer_cast<xcml::type>(node)) { \
-        auto const child = visit(op->expr, scope);               \
-                                                                 \
-        if constexpr (is_pre) {                                  \
-            res.str += opstr;                                    \
-        }                                                        \
-        if (child.precedence >= prec) {                          \
-            res.str += '(';                                      \
-        }                                                        \
-        res.str += child.str;                                    \
-        if (child.precedence >= prec) {                          \
-            res.str += ')';                                      \
-        }                                                        \
-        if constexpr (!is_pre) {                                 \
-            res.str += opstr;                                    \
-        }                                                        \
-                                                                 \
-        res.precedence = prec;                                   \
+#define OP(type, prec, opstr, is_pre)              \
+    if (auto op = xcml::type::dyncast(node)) {     \
+        auto const child = visit(op->expr, scope); \
+                                                   \
+        if constexpr (is_pre) {                    \
+            res.str += opstr;                      \
+        }                                          \
+        if (child.precedence >= prec) {            \
+            res.str += '(';                        \
+        }                                          \
+        res.str += child.str;                      \
+        if (child.precedence >= prec) {            \
+            res.str += ')';                        \
+        }                                          \
+        if constexpr (!is_pre) {                   \
+            res.str += opstr;                      \
+        }                                          \
+                                                   \
+        res.precedence = prec;                     \
     }
 #define ELSE_OP(type, prec, opstr, is_pre) else OP(type, prec, opstr, is_pre)
 
@@ -343,30 +348,30 @@ struct expr_decompiler : xcml::visitor<expr_decompiler, expr> {
 #undef OP
 #undef ELSE_OP
 
-#define OP(type, prec, opstr, l_cond, r_cond)                    \
-    if (auto op = std::dynamic_pointer_cast<xcml::type>(node)) { \
-        auto const lhs = visit(op->lhs, scope);                  \
-        auto const rhs = visit(op->rhs, scope);                  \
-                                                                 \
-        if (lhs.precedence l_cond prec) {                        \
-            res.str += '(';                                      \
-        }                                                        \
-        res.str += lhs.str;                                      \
-        if (lhs.precedence l_cond prec) {                        \
-            res.str += ')';                                      \
-        }                                                        \
-                                                                 \
-        res.str += opstr;                                        \
-                                                                 \
-        if (rhs.precedence r_cond prec) {                        \
-            res.str += '(';                                      \
-        }                                                        \
-        res.str += rhs.str;                                      \
-        if (rhs.precedence r_cond prec) {                        \
-            res.str += ')';                                      \
-        }                                                        \
-                                                                 \
-        res.precedence = prec;                                   \
+#define OP(type, prec, opstr, l_cond, r_cond)   \
+    if (auto op = xcml::type::dyncast(node)) {  \
+        auto const lhs = visit(op->lhs, scope); \
+        auto const rhs = visit(op->rhs, scope); \
+                                                \
+        if (lhs.precedence l_cond prec) {       \
+            res.str += '(';                     \
+        }                                       \
+        res.str += lhs.str;                     \
+        if (lhs.precedence l_cond prec) {       \
+            res.str += ')';                     \
+        }                                       \
+                                                \
+        res.str += opstr;                       \
+                                                \
+        if (rhs.precedence r_cond prec) {       \
+            res.str += '(';                     \
+        }                                       \
+        res.str += rhs.str;                     \
+        if (rhs.precedence r_cond prec) {       \
+            res.str += ')';                     \
+        }                                       \
+                                                \
+        res.precedence = prec;                  \
     }
 #define LEFT(type, prec, opstr) OP(type, prec, opstr, >, >=)
 #define ELSE_LEFT(type, prec, opstr) else OP(type, prec, opstr, >, >=)
@@ -706,6 +711,12 @@ struct decompiler : xcml::visitor<decompiler, void> {
                                  [[maybe_unused]] symbol_scope const* _scope) {
         assert(_scope == nullptr);
 
+        for (auto const& decl : node->preamble) {
+            visit(decl, nullptr);
+        }
+
+        out_.flush();
+
         for (auto const& sym : node->type_table) {
             visit(sym, nullptr);
         }
@@ -721,6 +732,8 @@ struct decompiler : xcml::visitor<decompiler, void> {
         for (auto const& decl : node->global_declarations) {
             visit(decl, &scope);
         }
+
+        out_.flush();
     }
 
     void add_type(std::shared_ptr<xcml::type_node> const& node) {
@@ -811,6 +824,7 @@ struct decompiler : xcml::visitor<decompiler, void> {
         auto const& info = scope->lookup(node->name);
         auto const ft = info.function_type();
 
+        print_loc(node);
         print_func(info, scope, node->attributes, ft->cuda_attrs);
 
         symbol_scope new_scope(scope, node->symbols);
@@ -944,6 +958,19 @@ struct decompiler : xcml::visitor<decompiler, void> {
         visit(node->body, scope);
     }
 
+    void visit_while_stmt(xcml::while_stmt_ptr node, symbol_scope const* scope) {
+        PRINT("while(");
+
+        if (node->condition) {
+            expr_decompiler dec(types_);
+            PRINT(dec.visit(node->condition, scope).str);
+        }
+
+        PRINT(")");
+
+        visit(node->body, scope);
+    }
+
     void visit_if_stmt(xcml::if_stmt_ptr node, symbol_scope const* scope) {
         PRINT("if(");
 
@@ -992,6 +1019,14 @@ struct decompiler : xcml::visitor<decompiler, void> {
 
     void visit_break_stmt(xcml::break_stmt_ptr const&, symbol_scope const*) {
         PRINT("break;");
+    }
+
+    void visit_continue_stmt(xcml::continue_stmt_ptr const&, symbol_scope const*) {
+        PRINT("continue;");
+    }
+
+    void visit_code(xcml::code_ptr node, symbol_scope const*) {
+        PRINT(node->value);
     }
 
     output_buffer const& output() const {
@@ -1056,11 +1091,11 @@ private:
 
     void print_type_definition(xcml::type_ptr node, symbol_scope const* scope) {
         if (shown_types_.find(node->type) == shown_types_.end()) {
-            if (auto t = std::dynamic_pointer_cast<xcml::struct_type>(node)) {
+            if (auto t = xcml::struct_type::dyncast(node)) {
                 print_type_definition(t, scope);
-            } else if (auto t = std::dynamic_pointer_cast<xcml::pointer_type>(node)) {
+            } else if (auto t = xcml::pointer_type::dyncast(node)) {
                 print_type_definition(t, scope);
-            } else if (auto t = std::dynamic_pointer_cast<xcml::basic_type>(node)) {
+            } else if (auto t = xcml::basic_type::dyncast(node)) {
                 if (!t->is_builtin) {
                     print_type_definition(find_type(types_, t->name), scope);
                 }
@@ -1102,7 +1137,12 @@ private:
 
 }  // namespace
 
-int main(int argc, char** argv) {
+#ifdef IMPLEMENT_MAIN
+int main(int argc, char** argv)
+#else
+int cback_main(int argc, char** argv)
+#endif
+{
     cxxopts::Options options(argv[0]);
     options.add_options()("input", "input file",
                           cxxopts::value<std::string>()->default_value("-"));

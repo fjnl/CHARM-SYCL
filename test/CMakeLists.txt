@@ -57,14 +57,42 @@ if(ROCM_SMI)
     endif()
 endif()
 
+if(TARGET Iris)
+    set(HAVE_IRIS_FOR_TEST YES)
+else()
+    find_library(found NAMES iris HINTS ENV LD_LIBRARY_PATH)
+
+    if(found)
+        set(HAVE_IRIS_FOR_TEST YES)
+    endif()
+endif()
+
 set(TEST_DEPENDS)
+set(TEST_QUICK_DEPENDS)
 
 add_subdirectory(c-back)
 add_subdirectory(sycl)
 
 add_custom_target(
     check
+    DEPENDS check-full
+)
+
+add_custom_target(
+    check-build
+    DEPENDS ${TEST_DEPENDS}
+)
+
+add_custom_target(
+    check-full
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --progress -j2
     DEPENDS ${TEST_DEPENDS}
+    USES_TERMINAL
+)
+
+add_custom_target(
+    check-quick
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --progress -j2 -R \"nd_item|parallel_for.*|single_task\"
+    DEPENDS ${TEST_QUICK_DEPENDS}
     USES_TERMINAL
 )

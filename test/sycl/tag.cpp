@@ -1,26 +1,28 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEMPLATE_TEST_CASE("tag", "", decltype(sycl::read_only), decltype(sycl::write_only),
-                   decltype(sycl::read_write)) {
+int main() {
     sycl::queue q;
-    int result = -1;
-    sycl::buffer<int, 1> x(&result, {1});
 
-    q.submit([&](sycl::handler& h) {
-        sycl::accessor xx(x, h, TestType{});
-    });
-    q.wait();
+    "tag"_test = [&](auto tag) {
+        int result = -1;
+        sycl::buffer<int, 1> x(&result, {1});
 
-    SUCCEED();
-}
+        q.submit([&](sycl::handler& h) {
+            sycl::accessor xx(x, h, tag);
+        });
+        q.wait();
 
-TEMPLATE_TEST_CASE("host tag", "", decltype(sycl::read_only), decltype(sycl::write_only),
-                   decltype(sycl::read_write)) {
-    sycl::queue q;
-    int result = -1;
-    sycl::buffer<int, 1> x(&result, {1});
+        expect(true);
+    } | std::tuple{sycl::read_only, sycl::write_only, sycl::read_write};
 
-    x.get_host_access(TestType{});
+    "host tag"_test = [&](auto tag) {
+        int result = -1;
+        sycl::buffer<int, 1> x(&result, {1});
 
-    SUCCEED();
+        x.get_host_access(tag);
+
+        expect(true);
+    } | std::tuple{sycl::read_only, sycl::write_only, sycl::read_write};
+
+    return 0;
 }

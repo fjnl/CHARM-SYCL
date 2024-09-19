@@ -97,10 +97,10 @@ void gen_impl(int dim) {
 
     pr("size_t item<{}>::get_linear_id() const {{", dim);
     switch (dim) {
-        case 0:
+        case 1:
             pr("return id_[0];");
             break;
-        case 1:
+        case 2:
             pr("return id_[1] + id_[0] * range_[1];");
             break;
         default:

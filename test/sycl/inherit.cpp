@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
 struct X {
     X() = default;
@@ -12,28 +12,32 @@ struct Y : X {
     int b = -1;
 };
 
-TEST_CASE("inherit", "") {
+int main() {
     sycl::queue q;
 
-    Y result;
+    "inherit"_test = [&]() {
+        Y result;
 
-    {
-        sycl::buffer<Y, 1> x(&result, {1});
+        {
+            sycl::buffer<Y, 1> x(&result, {1});
 
-        auto ev = q.submit([&](sycl::handler& h) {
-            sycl::accessor<Y, 1, sycl::access_mode::write> xx(x, h);
+            auto ev = q.submit([&](sycl::handler& h) {
+                sycl::accessor<Y, 1, sycl::access_mode::write> xx(x, h);
 
-            h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
-                Y y;
-                y.a = 1;
-                y.b = 2;
-                xx[0] = y;
+                h.parallel_for(sycl::range(1), [=](sycl::id<1> const&) {
+                    Y y;
+                    y.a = 1;
+                    y.b = 2;
+                    xx[0] = y;
+                });
             });
-        });
 
-        ev.wait();
-    }
+            ev.wait();
+        }
 
-    REQUIRE(result.a == 1);
-    REQUIRE(result.b == 2);
+        expect(result.a == 1_i);
+        expect(result.b == 2_i);
+    };
+
+    return 0;
 }

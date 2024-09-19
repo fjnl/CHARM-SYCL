@@ -1,0 +1,40 @@
+<interface name="cusolver_interface_11000">
+    <include>complex</include>
+    <include>cuda/cuda_interface.hpp</include>
+    <include>blas/common.hpp</include>
+    <include quote="1">cublas_interface.hpp</include>
+
+    <type name="dnsolver_t" type="void*" tag="cusolverDnHandle_t" />
+    <type name="result_t" type="unsigned int" tag="cusolverStatus_t" />
+    <type name="params_t" type="void*" tag="cusolverDnParams_t" />
+    <type name="stream_t" type="typename cuda_interface::stream_t" />
+    <type name="datatype_t" type="typename cuda_interface::datatype_t" />
+    <type name="BLAS" type="cublas_interface_11000" />
+    <type name="CUDA" type="typename BLAS::CUDA" />
+    <type name="uplo_t" type="typename BLAS::uplo_t" />
+
+    <function return="result_t" name="cusolver_dn_create" realname="cusolverDnCreate">
+        <param type="dnsolver_t*" />
+    </function>
+
+    <function return="result_t" name="cusolver_dn_destroy" realname="cusolverDnDestroy">
+        <param type="dnsolver_t" />
+    </function>
+
+    <function return="result_t" name="cusolver_dn_set_stream" realname="cusolverDnSetStream">
+        <param type="dnsolver_t" />
+        <param type="stream_t" />
+    </function>
+
+    <function return="result_t" name="cusolver_dn_create_params" realname="cusolverDnCreateParams">
+        <param type="params_t*" />
+    </function>
+
+    <function return="result_t" name="cusolver_dn_destroy_params" realname="cusolverDnDestroyParams">
+        <param type="params_t" />
+    </function>
+
+    <function return="result_t" name="cusolver_get_version" realname="cusolverGetVersion">
+        <param type="int*" name="version" />
+    </function>
+</interface>

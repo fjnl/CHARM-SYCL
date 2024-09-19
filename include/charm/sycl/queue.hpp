@@ -150,9 +150,9 @@ struct queue {
 private:
     friend struct runtime::impl_access;
 
-    explicit queue(std::shared_ptr<runtime::queue> const& impl) : impl_(impl) {}
+    explicit queue(runtime::queue_ptr const& impl) : impl_(impl) {}
 
-    std::shared_ptr<runtime::queue> impl_;
+    runtime::queue_ptr impl_;
 };
 
 CHARM_SYCL_END_NAMESPACE

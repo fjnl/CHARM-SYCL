@@ -161,7 +161,7 @@ struct host_accessor {
 private:
     friend struct runtime::impl_access;
 
-    std::shared_ptr<runtime::host_accessor> impl_;
+    runtime::host_accessor_ptr impl_;
 };
 
 CHARM_SYCL_END_NAMESPACE

@@ -1,11 +1,13 @@
-#include "common.hpp"
+#include "ut_common.hpp"
 
-TEST_CASE("buffer", "[sycl][buffer]") {
-    auto const r = sycl::range<3>(100, 100, 100);
+int main() {
+    "buffer"_test = []() {
+        auto const r = sycl::range<3>(100, 100, 100);
 
-    sycl::buffer<int, 3> buff(r);
+        sycl::buffer<int, 3> buff(r);
 
-    REQUIRE(buff.get_range() == r);
+        expect(buff.get_range() == r);
+    };
 
-    // sycl::host_accessor<int, 3, sycl::access_mode::read_write> x(buff);
+    return 0;
 }
